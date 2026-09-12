@@ -2,6 +2,7 @@ package org.setbd.control.webrtc
 
 import android.content.Context
 import android.content.Intent
+import android.media.projection.MediaProjection
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -15,7 +16,6 @@ import org.webrtc.DefaultVideoEncoderFactory
 import org.webrtc.EglBase
 import org.webrtc.IceCandidate
 import org.webrtc.MediaConstraints
-import org.webrtc.MediaProjection
 import org.webrtc.MediaStream
 import org.webrtc.PeerConnection
 import org.webrtc.PeerConnectionFactory

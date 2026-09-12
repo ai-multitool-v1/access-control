@@ -1,11 +1,11 @@
 package org.setbd.control.webrtc
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.app.ActivityManager
 import android.media.projection.MediaProjectionManager
 import org.json.JSONObject
-import org.setbd.control.Manifest
 import org.setbd.control.R
 import org.setbd.control.notifications.NotificationHelper
 import androidx.core.content.ContextCompat
