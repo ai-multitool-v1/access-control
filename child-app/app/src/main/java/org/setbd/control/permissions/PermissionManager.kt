@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import org.setbd.control.devicemanagement.DevicePolicy
 import org.setbd.control.storage.Prefs
@@ -83,8 +84,9 @@ object PermissionManager {
 
     fun requestIgnoreBatteryOptimization(ctx: Context) {
         try {
-            val i = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
-                .data(Uri.parse("package:${ctx.packageName}"))
+            val i = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                data = Uri.parse("package:${ctx.packageName}")
+            }
             startActivity(ctx, i)
         } catch (e: Exception) {
             startActivity(ctx, Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))

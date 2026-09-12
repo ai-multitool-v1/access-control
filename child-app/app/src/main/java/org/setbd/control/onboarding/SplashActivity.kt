@@ -12,6 +12,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import org.setbd.control.BuildConfig
 import org.setbd.control.R
+import org.setbd.control.pairing.PairingActivity
 import org.setbd.control.storage.Prefs
 import org.setbd.control.storage.SecureStore
 import org.setbd.control.ui.DashboardActivity

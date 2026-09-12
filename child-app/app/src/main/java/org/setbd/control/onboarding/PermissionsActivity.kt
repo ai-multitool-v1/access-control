@@ -11,6 +11,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import org.setbd.control.R
 import org.setbd.control.devicemanagement.DevicePolicy
+import org.setbd.control.pairing.PairingActivity
 import org.setbd.control.permissions.PermissionManager
 import org.setbd.control.storage.Prefs
 import org.setbd.control.ui.Clay

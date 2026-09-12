@@ -9,6 +9,7 @@ import android.os.BatteryManager
 import android.os.Build
 import android.os.PowerManager
 import org.json.JSONObject
+import org.setbd.control.BuildConfig
 
 /** Device facts for the parent dashboard: model, battery, network, uptime. */
 object DeviceInfoProvider {
