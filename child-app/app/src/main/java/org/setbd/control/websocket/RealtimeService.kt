@@ -184,11 +184,12 @@ class RealtimeService : Service(), WsClient.Listener {
 
 /** Simple observable connection state for the child dashboard UI. */
 object RealtimeState {
-    @Volatile var connected: Boolean = false
+    @Volatile private var connectedFlag: Boolean = false
+    val connected: Boolean get() = connectedFlag
     private val listeners = mutableListOf<(Boolean) -> Unit>()
 
     fun setConnected(v: Boolean) {
-        connected = v
+        connectedFlag = v
         synchronized(listeners) {
             listeners.toList().forEach { l -> runCatching { l(v) } }
         }
