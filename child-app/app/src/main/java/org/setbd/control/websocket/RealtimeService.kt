@@ -203,14 +203,3 @@ object RealtimeState {
         synchronized(listeners) { listeners.remove(l) }
     }
 }
-
-object UiNotifier {
-    /** Parent-facing status text for the child dashboard. */
-    fun stateText(ctx: android.content.Context, connected: Boolean): String =
-        if (connected) ctx.getString(R.string.dash_connected)
-        else ctx.getString(R.string.dash_offline)
-
-    fun notifyState(ctx: android.content.Context, connected: Boolean) {
-        // Reserved hook: dashboards observe RealtimeState directly.
-    }
-}

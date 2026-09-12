@@ -87,7 +87,7 @@ class WsClient(
     override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
         stopHeartbeat()
         this.webSocket = null
-        listener.onWsClosed(!deliberatelyClosed.get() && code != 4000L && code != 1000L)
+        listener.onWsClosed(!deliberatelyClosed.get() && code != 4000 && code != 1000)
     }
 
     private fun startHeartbeat() {
