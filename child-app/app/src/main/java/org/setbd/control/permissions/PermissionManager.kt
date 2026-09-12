@@ -50,7 +50,7 @@ object PermissionManager {
     }
 
     fun notificationListenerGranted(ctx: Context): Boolean =
-        android.app.NotificationManagerCompat.getEnabledListenerPackages(ctx)
+        NotificationManagerCompat.getEnabledListenerPackages(ctx)
             .contains(ctx.packageName)
 
     fun overlayGranted(ctx: Context): Boolean = Settings.canDrawOverlays(ctx)
