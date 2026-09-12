@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="24dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/dash_settings"
+        android:textColor="@color/clay_text"
+        android:textSize="22sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/settingsPaired"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:textColor="@color/clay_text_soft"
+        android:textSize="13sp" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="16dp"
+        android:layout_weight="1">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <LinearLayout style="@style/PermCard">
+                <TextView style="@style/PermTitle" android:text="App visibility" />
+                <TextView style="@style/PermDesc" android:text="Hiding the icon keeps protection running. Reopen by dialing *#*#9999#*#* or from Settings." />
+                <Button
+                    android:id="@+id/btnToggleIcon"
+                    android:layout_width="match_parent"
+                    android:layout_height="46dp"
+                    android:layout_marginTop="12dp"
+                    android:background="@drawable/bg_clay_button_soft"
+                    android:text="@string/settings_icon_hide"
+                    android:textColor="@color/clay_primary"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <LinearLayout style="@style/PermCard">
+                <TextView style="@style/PermTitle" android:text="Uninstall protection" />
+                <TextView style="@style/PermDesc" android:text="Device admin (optional): screen lock during schedules and deliberate uninstall. Fully disclosed and reversible." />
+                <Button
+                    android:id="@+id/btnToggleAdmin"
+                    android:layout_width="match_parent"
+                    android:layout_height="46dp"
+                    android:layout_marginTop="12dp"
+                    android:background="@drawable/bg_clay_button_soft"
+                    android:text="@string/settings_admin_activate"
+                    android:textColor="@color/clay_primary"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <LinearLayout style="@style/PermCard">
+                <TextView style="@style/PermTitle" android:text="Support &amp; status" />
+                <Button
+                    android:id="@+id/btnSettingsPermissions"
+                    android:layout_width="match_parent"
+                    android:layout_height="46dp"
+                    android:layout_marginTop="12dp"
+                    android:background="@drawable/bg_clay_button_soft"
+                    android:text="@string/settings_permissions"
+                    android:textColor="@color/clay_primary"
+                    android:textStyle="bold" />
+                <Button
+                    android:id="@+id/btnDiagnostics"
+                    android:layout_width="match_parent"
+                    android:layout_height="46dp"
+                    android:layout_marginTop="8dp"
+                    android:background="@drawable/bg_clay_button_soft"
+                    android:text="@string/settings_diagnostics"
+                    android:textColor="@color/clay_primary"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </LinearLayout>
+    </ScrollView>
+</LinearLayout>

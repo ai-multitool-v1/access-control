@@ -1,0 +1,34 @@
+package org.setbd.control.storage
+
+import android.content.Context
+import android.content.SharedPreferences
+
+/** Non-sensitive preferences: onboarding flags, icon state, cached policies. */
+object Prefs {
+    private const val FILE = "ac_prefs"
+    private lateinit var prefs: SharedPreferences
+
+    fun init(context: Context) {
+        prefs = context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+    }
+
+    var termsAccepted: Boolean
+        get() = prefs.getBoolean("terms_accepted", false)
+        set(v) = prefs.edit().putBoolean("terms_accepted", v).apply()
+
+    var permissionsShown: Boolean
+        get() = prefs.getBoolean("permissions_shown", false)
+        set(v) = prefs.edit().putBoolean("permissions_shown", v).apply()
+
+    var iconHidden: Boolean
+        get() = prefs.getBoolean("icon_hidden", false)
+        set(v) = prefs.edit().putBoolean("icon_hidden", v).apply()
+
+    var fcmToken: String?
+        get() = prefs.getString("fcm_token", null)
+        set(v) = prefs.edit().putString("fcm_token", v).apply()
+
+    var cachedPoliciesJson: String?
+        get() = prefs.getString("cached_policies", null)
+        set(v) = prefs.edit().putString("cached_policies", v).apply()
+}

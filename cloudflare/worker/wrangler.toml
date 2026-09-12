@@ -1,0 +1,27 @@
+# Access Control — Cloudflare Worker + Durable Objects
+name = "access-control-api"
+main = "src/worker.js"
+compatibility_date = "2024-09-01"
+
+[durable_objects]
+bindings = [
+  { name = "DEVICE_HUB", class_name = "DeviceHub" },
+  { name = "PAIRING_HUB", class_name = "PairingHub" }
+]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["DeviceHub", "PairingHub"]
+
+# ---- PUBLIC CONFIG (safe to edit) ----
+[vars]
+ENVIRONMENT = "production"
+# Your Supabase project URL (public value, safe as a var)
+SUPABASE_URL = "https://YOUR-PROJECT-REF.supabase.co"
+# Public anon key of the Supabase project (used only to validate parent JWTs upstream)
+SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY"
+
+# ---- SERVER SECRETS (set with: npx wrangler secret put <NAME>) ----
+# SUPABASE_SERVICE_ROLE_KEY   -> service-role key. NEVER commit or expose.
+# TELEGRAM_BOT_TOKEN          -> optional default bot token fallback.
+# FCM_SERVICE_ACCOUNT_JSON    -> full JSON of the Firebase service account (FCM HTTP v1).

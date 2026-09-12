@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Claymorphism palette -->
+    <color name="clay_bg">#F3EFFC</color>
+    <color name="clay_primary">#6A5AE0</color>
+    <color name="clay_primary_dark">#5B4BD1</color>
+    <color name="clay_accent">#4FC3F7</color>
+    <color name="clay_card">#FFFFFF</color>
+    <color name="clay_card_deep">#F0ECFE</color>
+    <color name="clay_stroke">#E2DBF9</color>
+    <color name="clay_text">#241F3D</color>
+    <color name="clay_text_soft">#8A85A6</color>
+    <color name="clay_green">#3DD68C</color>
+    <color name="clay_red">#F26D6D</color>
+    <color name="block_bg">#1B1638</color>
+
+    <color name="ic_launcher_background">#6A5AE0</color>
+</resources>

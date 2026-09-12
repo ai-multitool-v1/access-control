@@ -1,0 +1,77 @@
+<resources>
+    <string name="app_name">Access Control</string>
+    <string name="developer_credit">Developed by SETBD</string>
+    <string name="telegram_support_url">https://t.me/setbd_support</string>
+
+    <string name="splash_tagline">Family protection, together.</string>
+
+    <string name="terms_title">Terms &amp; Conditions</string>
+    <string name="terms_body">
+Access Control is a parental-control service that helps a parent and child agree on safe device use. This device will be monitored ONLY after you complete pairing with a parent account and grant the listed permissions.\n\n
+<b>What may be collected, with your knowledge:</b>\n
+• App list and daily app usage time (requires Usage Access permission)\n
+• Device status: battery, charging, network, model, Android version\n
+• Location — ONLY while the parent enables location monitoring AND location permission is granted. Status is always visible on the dashboard.\n
+• App restriction policies (screen-time limits, app limits, schedules)\n\n
+<b>What is NEVER done:</b>\n
+• No keylogging, no reading of passwords or messages\n
+• No microphone or camera recording\n
+• No secret screen recording\n
+• No execution of arbitrary remote commands\n\n
+<b>Consent &amp; control:</b>\n
+• The app icon can be hidden only through an explicit setting you choose, and the app stays reachable by dialing *#*#9999#*#* and through the parent dashboard.\n
+• Device-admin (uninstall protection) is optional and clearly disclosed. It can be deactivated from Settings → Device admin.\n
+• A parent can revoke this device from the dashboard, which disconnects it permanently.\n\n
+By pressing <b>I Agree</b> you confirm you are the device guardian and accept these terms.
+    </string>
+
+    <string name="pairing_title">Enter Pairing Code</string>
+    <string name="pairing_hint">Ask your parent to generate a code in the dashboard, then type it here.</string>
+    <string name="pairing_success">Paired! Connecting…</string>
+    <string name="pairing_connect">CONNECT</string>
+
+    <string name="perm_granted">Granted</string>
+    <string name="perm_needed">Needed</string>
+    <string name="perm_grant_btn">GRANT</string>
+    <string name="perm_granted_btn">OK ✓</string>
+    <string name="perm_continue">Continue →</string>
+
+    <string name="dash_minutes_value">%1$d min today</string>
+    <string name="dash_unknown">—</string>
+    <string name="dash_on">On</string>
+    <string name="dash_off">Off</string>
+    <string name="dash_needed">Permission needed</string>
+    <string name="dash_open_permissions">Permission setup</string>
+    <string name="dash_telegram_support">Telegram Support</string>
+    <string name="dash_settings">Settings</string>
+
+    <string name="settings_not_paired">Not paired yet</string>
+    <string name="settings_icon_hide">Hide app icon</string>
+    <string name="settings_icon_show">Show app icon</string>
+    <string name="settings_admin_activate">Enable uninstall protection</string>
+    <string name="settings_admin_deactivate">Deactivate uninstall protection</string>
+    <string name="settings_continue">Continue</string>
+    <string name="settings_icon_hidden_title">Icon hidden</string>
+    <string name="settings_icon_hidden_body">To open the app again, dial *#*#9999#*#* in the phone app, or ask your parent. The app keeps working in the background.</string>
+    <string name="settings_diagnostics">Diagnostics</string>
+    <string name="settings_permissions">Permission setup</string>
+
+    <string name="diag_title">Diagnostics</string>
+
+    <string name="dash_connected">Connected</string>
+    <string name="dash_offline">Offline — reconnecting…</string>
+    <string name="dash_connecting">Connecting…</string>
+
+    <string name="block_title">Time is up</string>
+    <string name="block_subtitle">Ask your parent for more time on this app.</string>
+    <string name="block_close">OK</string>
+    <string name="block_used_today">%1$d min used today</string>
+
+    <string name="notif_channel_protection">Protection service</string>
+    <string name="notif_channel_alerts">Parent messages</string>
+    <string name="notif_protection_title">Access Control active</string>
+    <string name="notif_protection_text">Keeping this device protected according to family policies.</string>
+
+    <string name="admin_description">Allows Access Control to protect this child device: lock the screen during bedtime/school mode and warn before uninstalling the protection. Deactivate any time from Settings.</string>
+    <string name="admin_explanation">Access Control uses device-admin to (1) lock the screen when a schedule like bedtime is active and (2) make uninstalling the protection a deliberate step. It cannot read messages and cannot prevent you from contacting anyone in an emergency.</string>
+</resources>

@@ -1,0 +1,33 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# builds
+dist/
+build/
+.wrangler/
+.dev.vars
+
+# android
+*.apk
+*.aab
+.gradle/
+local.properties
+child-app/.idea/
+child-app/app/build/
+child-app/build/
+child-app/captures/
+*.keystore
+*.jks
+
+# env & secrets
+.env
+.env.*
+!.env.example
+google-services.json
+
+# misc
+.DS_Store
+*.log
+coverage/

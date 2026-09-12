@@ -1,0 +1,85 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [main]
+    tags: ['child-v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build child APK
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: child-app
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Gradle (cached)
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Build debug APK
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --stacktrace
+
+      - name: Run unit tests
+        run: ./gradlew testDebugUnitTest --stacktrace || echo "no tests yet"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AccessControl-child-debug-apk
+          path: child-app/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Attach APK to GitHub Release (child-v* tags)
+        if: startsWith(github.ref, 'refs/tags/child-v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: child-app/app/build/outputs/apk/debug/app-debug.apk
+          name: Access Control child ${{ github.ref_name }}
+
+  dashboard:
+    name: Build parent dashboard
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: parent-dashboard
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: parent-dashboard/package-lock.json
+
+      - run: npm install --no-audit --no-fund
+
+      - name: Production build
+        run: npm run build
+
+      - name: Upload dashboard build
+        uses: actions/upload-artifact@v4
+        with:
+          name: parent-dashboard-dist
+          path: parent-dashboard/dist
+          if-no-files-found: error

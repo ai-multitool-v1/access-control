@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.AccessControl" parent="Theme.Material3.Light.NoActionBar">
+        <item name="colorPrimary">@color/clay_primary</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="colorPrimaryContainer">@color/clay_card_deep</item>
+        <item name="colorSecondary">@color/clay_accent</item>
+        <item name="android:statusBarColor">@color/clay_bg</item>
+        <item name="android:navigationBarColor">@color/clay_bg</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowBackground">@color/clay_bg</item>
+    </style>
+
+    <style name="Theme.AccessControl.Splash">
+        <item name="android:windowBackground">@drawable/bg_splash</item>
+        <item name="android:statusBarColor">@color/clay_primary</item>
+        <item name="android:navigationBarColor">@color/clay_primary</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+
+    <style name="Theme.AccessControl.Block" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="android:windowBackground">@color/block_bg</item>
+        <item name="android:statusBarColor">@color/block_bg</item>
+        <item name="android:navigationBarColor">@color/block_bg</item>
+    </style>
+
+    <style name="ClayCard">
+        <item name="android:background">@drawable/bg_clay_card</item>
+        <item name="android:elevation">6dp</item>
+    </style>
+
+    <style name="ClayTitle">
+        <item name="android:textColor">@color/clay_text</item>
+        <item name="android:textSize">22sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="ClayBody">
+        <item name="android:textColor">@color/clay_text_soft</item>
+        <item name="android:textSize">14sp</item>
+    </style>
+
+    <style name="PermCard">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:background">@drawable/bg_clay_card</item>
+        <item name="android:elevation">6dp</item>
+        <item name="android:layout_marginTop">12dp</item>
+        <item name="android:padding">16dp</item>
+    </style>
+
+    <style name="PermTitle">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textColor">@color/clay_text</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="PermDesc">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">4dp</item>
+        <item name="android:textColor">@color/clay_text_soft</item>
+        <item name="android:textSize">12sp</item>
+    </style>
+
+    <style name="PermRow">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:layout_marginTop">10dp</item>
+    </style>
+
+    <style name="PermStatus">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="PermButton">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">36dp</item>
+        <item name="android:minWidth">92dp</item>
+        <item name="android:background">@drawable/bg_clay_button_soft</item>
+        <item name="android:textColor">@color/clay_primary</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:paddingStart">14dp</item>
+        <item name="android:paddingEnd">14dp</item>
+    </style>
+
+    <style name="DashCard">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_columnWeight">1</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:background">@drawable/bg_clay_card</item>
+        <item name="android:elevation">6dp</item>
+        <item name="android:padding">16dp</item>
+    </style>
+
+    <style name="DashCardLabel">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textColor">@color/clay_text_soft</item>
+        <item name="android:textSize">11sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textAllCaps">true</item>
+    </style>
+
+    <style name="DashCardValue">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">4dp</item>
+        <item name="android:textColor">@color/clay_text</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+</resources>

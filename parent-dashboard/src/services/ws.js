@@ -1,0 +1,166 @@
+// Live device WebSocket client: connect, auth, heartbeat, acked commands,
+// exponential backoff reconnect. One socket per device at a time.
+
+import { WS_BASE } from '../lib/config.js';
+
+const listeners = new Set();
+const eventListeners = new Set();
+let socket = null;
+let currentDevice = null;
+let pending = new Map();
+let backoffMs = 1000;
+let reconnectTimer = null;
+let heartbeatTimer = null;
+let authToken = null;
+let state = 'disconnected'; // disconnected | connecting | connected
+
+function setState(s) {
+  state = s;
+  emit({ type: 'state', state: s, deviceId: currentDevice });
+}
+
+function emit(msg) {
+  for (const fn of listeners) {
+    try { fn(msg); } catch { /* listener error */ }
+  }
+}
+
+function emitEvent(event, payload) {
+  for (const fn of eventListeners) {
+    try { fn({ event, payload }); } catch { /* listener error */ }
+  }
+}
+
+export function onState(fn) {
+  listeners.add(fn);
+  fn({ type: 'state', state, deviceId: currentDevice });
+  return () => listeners.delete(fn);
+}
+
+export function onEvent(fn) {
+  eventListeners.add(fn);
+  return () => eventListeners.delete(fn);
+}
+
+export function isConnected() {
+  return state === 'connected';
+}
+
+export function connect(deviceId, token) {
+  if (!WS_BASE) return;
+  if (currentDevice === deviceId && socket && (state === 'connected' || state === 'connecting')) return;
+  disconnect();
+  currentDevice = deviceId;
+  authToken = token;
+  open();
+}
+
+function open() {
+  if (!currentDevice || !authToken) return;
+  setState('connecting');
+  const url = `${WS_BASE}/ws?role=parent&device=${encodeURIComponent(currentDevice)}&token=${encodeURIComponent(authToken)}`;
+  try {
+    socket = new WebSocket(url);
+  } catch {
+    scheduleReconnect();
+    return;
+  }
+
+  socket.onopen = () => {
+    backoffMs = 1000;
+    setState('connected');
+    startHeartbeat();
+  };
+
+  socket.onmessage = (ev) => {
+    let msg;
+    try { msg = JSON.parse(ev.data); } catch { return; }
+    if (msg.type === 'response' && msg.requestId) {
+      const p = pending.get(msg.requestId);
+      if (p) {
+        clearTimeout(p.timer);
+        pending.delete(msg.requestId);
+        if (msg.success) p.resolve(msg.payload);
+        else p.reject(new Error(msg.error?.message || 'Command failed'));
+      }
+      return;
+    }
+    if (msg.type === 'event') {
+      emitEvent(msg.event, msg.payload);
+      return;
+    }
+    if (msg.type === 'pong') return;
+  };
+
+  socket.onclose = () => {
+    stopHeartbeat();
+    socket = null;
+    setState('disconnected');
+    scheduleReconnect();
+  };
+
+  socket.onerror = () => {
+    try { socket && socket.close(); } catch { /* ignore */ }
+  };
+}
+
+function scheduleReconnect() {
+  if (!currentDevice) return;
+  clearTimeout(reconnectTimer);
+  const jitter = Math.random() * 400;
+  reconnectTimer = setTimeout(open, backoffMs + jitter);
+  backoffMs = Math.min(backoffMs * 2, 30_000);
+}
+
+function startHeartbeat() {
+  stopHeartbeat();
+  heartbeatTimer = setInterval(() => {
+    sendRaw({ type: 'ping' });
+  }, 30_000);
+}
+
+function stopHeartbeat() {
+  clearInterval(heartbeatTimer);
+  heartbeatTimer = null;
+}
+
+function sendRaw(obj) {
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify(obj));
+    return true;
+  }
+  return false;
+}
+
+export function disconnect() {
+  clearTimeout(reconnectTimer);
+  stopHeartbeat();
+  for (const [, p] of pending) {
+    clearTimeout(p.timer);
+    p.reject(new Error('Connection closed'));
+  }
+  pending = new Map();
+  if (socket) {
+    try { socket.onclose = null; socket.close(1000, 'client_leaving'); } catch { /* ignore */ }
+  }
+  socket = null;
+  currentDevice = null;
+  setState('disconnected');
+}
+
+// Send an allowlisted command and await the acked response.
+export function command(action, payload = {}, timeoutMs = 20_000) {
+  return new Promise((resolve, reject) => {
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      reject(new Error('Device is not connected'));
+      return;
+    }
+    const requestId = (crypto.randomUUID ? crypto.randomUUID() : `r-${Date.now()}-${Math.random()}`);
+    const timer = setTimeout(() => {
+      pending.delete(requestId);
+      reject(new Error('Command timed out'));
+    }, timeoutMs);
+    pending.set(requestId, { resolve, reject, timer });
+    sendRaw({ type: 'command', requestId, action, payload });
+  });
+}

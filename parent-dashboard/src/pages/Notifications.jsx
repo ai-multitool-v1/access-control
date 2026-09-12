@@ -1,0 +1,72 @@
+import { useEffect, useState } from 'react';
+import { api } from '../services/api.js';
+import { PageHeader, SpatialCard, EmptyState, ErrorBanner, Toggle } from '../components/ui.jsx';
+
+export default function Notifications() {
+  const [settings, setSettings] = useState(null);
+  const [devices, setDevices] = useState([]);
+  const [msg, setMsg] = useState('');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    api('/api/notifications/settings').then((d) => setSettings(d.settings)).catch((e) => setError(e.message));
+    api('/api/devices').then((d) => setDevices(d.devices || [])).catch(() => {});
+  }, []);
+
+  async function save(next) {
+    setSettings(next);
+    setMsg('');
+    try {
+      await api('/api/notifications/settings', { method: 'POST', body: next });
+      setMsg('✅ Saved');
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  async function testPush() {
+    setMsg(''); setError('');
+    try {
+      const r = await api('/api/notifications/test', { method: 'POST', body: devices[0] ? { deviceId: devices[0].id } : {} });
+      setMsg(r.ok ? '✅ Test push sent (requires Firebase configured in the child app)' : `⚠️ ${r.message}`);
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  return (
+    <div>
+      <PageHeader title="Notifications" subtitle="Choose which events notify you" />
+      <ErrorBanner message={error} />
+      {msg && <p className="animate-fade-up mb-4 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">{msg}</p>}
+
+      {!settings ? (
+        <p className="py-12 text-center text-slate-400">Loading…</p>
+      ) : (
+        <div className="grid gap-6 lg:grid-cols-2">
+          <SpatialCard className="p-5">
+            <h3 className="mb-4 text-lg font-semibold text-white">Event notifications (Telegram)</h3>
+            <div className="space-y-4">
+              <Toggle checked={settings.on_connect !== false} onChange={(v) => save({ ...settings, onConnect: v })} label="Device connects" />
+              <Toggle checked={settings.on_disconnect !== false} onChange={(v) => save({ ...settings, onDisconnect: v })} label="Device goes offline" />
+              <Toggle checked={settings.on_policy_change !== false} onChange={(v) => save({ ...settings, onPolicyChange: v })} label="Policy changes" />
+            </div>
+            <p className="mt-4 text-xs text-slate-500">Telegram delivery is configured on the Telegram page.</p>
+          </SpatialCard>
+
+          <SpatialCard className="p-5">
+            <h3 className="mb-4 text-lg font-semibold text-white">Push (FCM)</h3>
+            <p className="mb-4 text-sm text-slate-400">
+              Sends a Firebase push to the child device — also used to wake the app when a command
+              arrives while it's offline.
+            </p>
+            <button className="btn-primary" onClick={testPush} disabled={devices.length === 0}>
+              Send test push
+            </button>
+            {devices.length === 0 && <p className="mt-3 text-xs text-slate-500">Pair a device first.</p>}
+          </SpatialCard>
+        </div>
+      )}
+    </div>
+  );
+}
