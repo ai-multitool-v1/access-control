@@ -65,7 +65,7 @@
             <!-- Overlay -->
             <LinearLayout style="@style/PermCard">
                 <TextView style="@style/PermTitle" android:text="Display over other apps" />
-                <TextView style="@style/PermDesc" android:text="Shows a friendly \"time is up\" screen when a limit is reached." />
+                <TextView style="@style/PermDesc" android:text="Shows a friendly &quot;time is up&quot; screen when a limit is reached." />
                 <LinearLayout style="@style/PermRow">
                     <TextView android:id="@+id/permOverlayStatus" style="@style/PermStatus" />
                     <Button android:id="@+id/permOverlayBtn" style="@style/PermButton" />
