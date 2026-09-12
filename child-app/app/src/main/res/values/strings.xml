@@ -42,8 +42,8 @@ By pressing <b>I Agree</b> you confirm you are the device guardian and accept th
     <string name="accessibility_desc">Used only to detect which app is in the foreground so app limits and instant block work immediately. No screen content is read.</string>
 
     <string name="capture_active_title">Sharing with parent</string>
-    <string name="capture_screen_active">Screen sharing is active — your parent can see this device&#39;s screen.</string>
-    <string name="capture_audio_active">Microphone sharing is active — your parent can hear this device&#39;s surroundings.</string>
+    <string name="capture_screen_active">Screen sharing is active — your parent can see this device\'s screen.</string>
+    <string name="capture_audio_active">Microphone sharing is active — your parent can hear this device\'s surroundings.</string>
     <string name="capture_camera_active">Camera sharing is active — your parent can see the camera view.</string>
     <string name="capture_request_title">Remote access request</string>
     <string name="capture_request_screen">Your parent requested screen sharing. Tap to allow (system dialog will appear).</string>

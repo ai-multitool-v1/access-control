@@ -135,7 +135,7 @@
             <!-- 11. Contacts / Phone / SMS (optional) -->
             <LinearLayout style="@style/PermCard">
                 <TextView style="@style/PermTitle" android:text="Contacts / Phone / SMS (optional)" />
-                <TextView style="@style/PermDesc" android:text="Optional call &amp; SMS monitoring — the parent can view recent calls, messages and safety contacts. Skip if you don&#39;t want it." />
+                <TextView style="@style/PermDesc" android:text="Optional call &amp; SMS monitoring — the parent can view recent calls, messages and safety contacts. Skip if you don\'t want it." />
                 <LinearLayout style="@style/PermRow">
                     <TextView android:id="@+id/permCommsStatus" style="@style/PermStatus" />
                     <Button android:id="@+id/permCommsBtn" style="@style/PermButton" />
