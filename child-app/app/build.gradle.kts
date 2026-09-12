@@ -21,8 +21,8 @@ android {
         applicationId = "org.setbd.control"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0"
         buildConfigField("String", "API_BASE", "\"$apiBase\"")
         buildConfigField("String", "WS_BASE", "\"$wsBase\"")
     }
@@ -58,6 +58,8 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // Maintained Google-WebRTC prebuilt (unified plan, Camera2, screen capture)
+    implementation("io.getstream:stream-webrtc-android:1.1.1")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("androidx.work:work-runtime-ktx:2.9.1")
     // FCM (optional at runtime — activated by google-services.json presence)

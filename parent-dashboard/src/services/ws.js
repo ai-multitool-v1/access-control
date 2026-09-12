@@ -5,6 +5,7 @@ import { WS_BASE } from '../lib/config.js';
 
 const listeners = new Set();
 const eventListeners = new Set();
+const rtcListeners = new Set();
 let socket = null;
 let currentDevice = null;
 let pending = new Map();
@@ -29,6 +30,17 @@ function emitEvent(event, payload) {
   for (const fn of eventListeners) {
     try { fn({ event, payload }); } catch { /* listener error */ }
   }
+}
+
+function emitRtc(payload) {
+  for (const fn of rtcListeners) {
+    try { fn(payload); } catch { /* listener error */ }
+  }
+}
+
+export function onRtc(fn) {
+  rtcListeners.add(fn);
+  return () => rtcListeners.delete(fn);
 }
 
 export function onState(fn) {
@@ -87,6 +99,10 @@ function open() {
     }
     if (msg.type === 'event') {
       emitEvent(msg.event, msg.payload);
+      return;
+    }
+    if (msg.type === 'rtc') {
+      emitRtc(msg.payload || {});
       return;
     }
     if (msg.type === 'pong') return;
@@ -163,4 +179,9 @@ export function command(action, payload = {}, timeoutMs = 20_000) {
     pending.set(requestId, { resolve, reject, timer });
     sendRaw({ type: 'command', requestId, action, payload });
   });
+}
+
+// Fire-and-forget WebRTC signaling (answers / ICE candidates / stop).
+export function sendRtc(payload) {
+  return sendRaw({ type: 'rtc', payload });
 }

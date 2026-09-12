@@ -22,6 +22,9 @@ import org.setbd.control.permissions.PermissionManager
 import org.setbd.control.storage.SecureStore
 import org.setbd.control.util.Http
 import org.setbd.control.util.UiNotifier
+import org.setbd.control.webrtc.CaptureService
+import org.setbd.control.webrtc.RtcBridge
+import org.setbd.control.webrtc.WebRtcCore
 
 /**
  * Foreground service owning the child WebSocket connection:
@@ -70,6 +73,9 @@ class RealtimeService : Service(), WsClient.Listener {
         backoffMs = 1_000L
         RealtimeState.setConnected(true)
         UiNotifier.notifyState(this, true)
+        // Wire the outbound WebRTC signaling channel to this socket.
+        val socket = ws
+        RtcBridge.sender = { msg -> socket?.send(msg) ?: false }
         scope.launch {
             pullPolicies()
             sendStatus()
@@ -104,6 +110,11 @@ class RealtimeService : Service(), WsClient.Listener {
                 if (event == "policies_updated") {
                     scope.launch { pullPolicies() }
                 }
+            }
+            "rtc" -> {
+                // WebRTC signaling (answer/ice/stop) from the parent viewer.
+                val payload = obj.optJSONObject("payload") ?: JSONObject()
+                WebRtcCore.handleSignal(this@RealtimeService, payload)
             }
             "pong" -> { /* heartbeat ack */ }
         }
@@ -172,6 +183,8 @@ class RealtimeService : Service(), WsClient.Listener {
         handler.removeCallbacksAndMessages(null)
         ws?.close()
         ws = null
+        RtcBridge.sender = null
+        WebRtcCore.stopAll()
         RealtimeState.setConnected(false)
         scope.cancel()
         super.onDestroy()

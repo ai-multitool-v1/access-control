@@ -25,12 +25,13 @@ Parent Browser ──HTTPS/WSS──► Cloudflare Worker ──► Durable Obje
 access-control/
 ├── child-app/            Kotlin Android app (Gradle, package org.setbd.control)
 │   └── app/src/main/java/org/setbd/control/
-│       ├── onboarding/   Splash → credit → Terms → Permissions → Pairing
-│       ├── permissions/  Usage Access, location, overlay, battery, admin checks
+│       ├── onboarding/   Splash → credit → Terms → Permissions (14-step wizard) → Pairing
+│       ├── permissions/  Checks + REAL intents for every permission row
 │       ├── devicemanagement/ DeviceAdminReceiver + DevicePolicy wrapper
-│       ├── monitoring/   device info, usage stats, installed apps, location
-│       ├── controls/     PolicyEngine + enforcement service + block screen
+│       ├── monitoring/   device info, usage stats, installed apps, location, comms
+│       ├── controls/     PolicyEngine + enforcement + block screen + accessibility
 │       ├── websocket/    WsClient, CommandProcessor (strict allowlist), RealtimeService
+│       ├── webrtc/       Screen mirror / one-way audio / remote camera (libwebrtc)
 │       ├── boot/         BootReceiver — restore services after reboot
 │       ├── diagnostics/  *#*#9999#*#* (fallback *#*#1000#*#*) + diagnostics screen
 │       ├── notifications/ FCM service (optional) + notification listener + helpers
@@ -167,17 +168,62 @@ Install, open → Splash → developer credit (Telegram button) → **Terms →
 - **Secrets**: Telegram tokens and FCM keys never leave the server.
 - **Audit logs**: pairing, policy changes, revocation, Telegram saves.
 
-## Child-app permissions (all user-visible)
+## Child-app permissions (full matrix — AirDroid-Kids-style, all user-visible)
 
-| Permission | Used for | Where granted |
-|------------|----------|----------------|
-| Usage Access | app list, screen time, limits | Settings → Usage access |
-| Location | parent-enabled monitoring only | Runtime dialog |
-| Notifications | parent messages + service status | Runtime (13+) |
-| Display over apps | friendly "time is up" screen | Settings → overlay |
-| Battery optimization | reliable connection | System dialog |
-| Device admin (optional) | screen lock in schedules, uninstall protection | Device admin flow |
-| Boot completed | restart monitoring after reboot | automatic (manifest) |
+Every row below appears in the in-app **Permissions wizard** with a working
+GRANT button that opens the real system screen or fires the real runtime
+dialog, and re-validates itself when you come back:
+
+| # | Permission | Used for | How it's granted |
+|---|------------|----------|------------------|
+| 1 | **Accessibility** | instant app block, screen-time limits, instant block | Settings → Accessibility → Access Control |
+| 2 | **Notification access** | monitor notifications (Facebook, Instagram, WhatsApp…) | Settings → Notification access |
+| 3 | **Location (precise)** | real-time location, route history, geofence alerts | Runtime dialog |
+| 4 | **Location — all the time** | background location for history/geofence | Runtime dialog → "Allow all the time" |
+| 5 | **Usage access** | screen-time reports, app usage stats | Settings → Usage access |
+| 6 | **Display over other apps** | limit/block screens + tap-to-allow prompts | Settings → overlay |
+| 7 | **Battery unrestricted** | keep-alive (background running) | System dialog (+ OEM auto-start) |
+| 8 | **Microphone** | one-way audio / voice chat (WebRTC) | Runtime dialog |
+| 9 | **Camera** | remote camera & screen mirroring (WebRTC) | Runtime dialog |
+| 10 | **Notifications** | parent messages + status + prompts | Runtime dialog (Android 13+) |
+| 11 | **Contacts / Phone / SMS** *(optional)* | call & SMS monitoring, safety contacts | Runtime dialogs (skippable) |
+| 12 | **Storage / photos** | file & media features | Runtime dialog |
+| 13 | **Install unknown apps** | update wizard | Settings → install unknown apps |
+| 14 | **Device admin** *(optional)* | schedule screen lock, uninstall protection | Device-admin activation flow |
+
+Parent dashboard (browser) side: camera/mic are only used by the WebRTC
+viewer after YOU start a session; the child device always shows Android's
+mic/camera indicators and an ongoing "Sharing with parent" notification.
+
+## Remote access over WebRTC
+
+Real-time screen mirroring, one-way audio (listen to surroundings) and
+remote camera ride the SAME authenticated WebSocket through the Durable
+Object — no extra servers, no polling:
+
+```
+Parent dashboard            Durable Object              Child device
+────────────────            ──────────────              ────────────
+start_screen_mirror ──────► relay (allowlist) ────────► consent notification
+                                                    └─► system MediaProjection dialog
+                        ◄──── SDP offer (rtc) ────────  capture starts
+SDP answer, ICE ───────► relay ──────────────────────►  peer connection
+        ◄═════════════ live video/audio track ══════════
+stop (button/child) ───► relay ──────────────────────►  capture stops + notification clears
+```
+
+Consent model (nothing is ever covert):
+
+- **Screen mirroring** always requires the system MediaProjection dialog —
+  the child taps a notification to open it, every session.
+- **Audio/camera** start directly only when the app is foreground; otherwise
+  a tap-to-allow notification is posted. Ongoing sessions show a
+  "Sharing with parent" notification plus Android's own indicators.
+- Optional **contacts / call log / SMS** reading happens only per command,
+  only if that permission was explicitly granted on the child.
+- No TURN server is bundled; devices behind symmetric NAT may need one —
+  add `turn:` credentials to `RTC_CONFIG` (dashboard) and
+  `PeerConnection.RTCConfiguration` (`WebRtcCore.kt`) if required.
 
 **Icon hiding** uses the launcher alias only — the app stays reachable via
 `*#*#9999#*#*` (fallback `*#*#1000#*#*`) and its services keep running.
@@ -205,3 +251,169 @@ deactivated from the app's Settings.
 
 CI: `.github/workflows/build-android.yml` builds the APK **and** the dashboard
 on every push. Tag `child-v*` to publish a release APK.
+
+---
+
+## Complete production deployment (step-by-step with every credential)
+
+Follow this top-to-bottom. Total time ≈ 20 minutes, everything is free-tier.
+
+### STEP 0 — Collect your credentials
+
+| # | Credential | Where you get it | Where it goes |
+|---|-----------|------------------|---------------|
+| 1 | Supabase **Project URL** | supabase.com → your project → Settings → API | wrangler.toml `[vars]`, dashboard `.env`, child Gradle not needed |
+| 2 | Supabase **anon key** | Settings → API → `anon` `public` | wrangler.toml `[vars]`, dashboard `.env` |
+| 3 | Supabase **service_role key** | Settings → API → `service_role` | Worker secret only (`SUPABASE_SERVICE_ROLE_KEY`) |
+| 4 | Supabase **JWT Secret** | Settings → API → JWT Settings → JWT Secret | Worker secret only (`SUPABASE_JWT_SECRET`) if set in wrangler.toml vars |
+| 5 | Cloudflare account | dash.cloudflare.com (free) | `wrangler login` |
+| 6 | Telegram **Bot Token** | @BotFather → `/newbot` → copy token | Worker secret `TELEGRAM_BOT_TOKEN` (and/or per-parent in dashboard → Telegram) |
+| 7 | Telegram **Chat ID** | @userinfobot (send any message, it replies with your ID) | dashboard → Telegram page (stored server-side) |
+| 8 | Firebase service account JSON | console.firebase.google.com → Project settings → Service accounts → Generate new private key | Worker secret `FCM_SERVICE_ACCOUNT_JSON` (optional, for wake pushes) |
+| 9 | `google-services.json` | Firebase → Android app `org.setbd.control` → download | `child-app/app/google-services.json` (optional) |
+| 10 | GitHub secrets (CI signing, optional) | create a keystore, base64 it | repo → Settings → Secrets → Actions |
+
+### STEP 1 — Supabase (database + auth)
+
+1. Create a project at [supabase.com](https://supabase.com).
+2. SQL Editor → paste the whole of `supabase/migrations/0001_init.sql` → **Run**.
+   You should see 12 tables + policies created with no errors.
+3. Copy Project URL, anon key, service_role key, JWT secret (table above).
+
+### STEP 2 — Cloudflare Worker (API + realtime + DO)
+
+```bash
+cd cloudflare/worker
+npm install
+npx wrangler login                       # opens the browser; approve
+# edit wrangler.toml [vars]: SUPABASE_URL + SUPABASE_ANON_KEY
+npx wrangler deploy                      # → https://access-control-api.<subdomain>.workers.dev
+
+# SERVER SECRETS (interactive prompts — paste, Enter):
+npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+npx wrangler secret put TELEGRAM_BOT_TOKEN            # optional
+npx wrangler secret put FCM_SERVICE_ACCOUNT_JSON      # optional (paste the whole JSON)
+```
+
+Verify: `curl https://access-control-api.<subdomain>.workers.dev/api/health`
+→ `{"ok":true,...}`.
+
+### STEP 3 — Parent dashboard (Cloudflare Pages)
+
+```bash
+cd parent-dashboard
+cp .env.example .env
+# fill .env: VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY,
+#            VITE_API_BASE=https://access-control-api.<subdomain>.workers.dev
+#            VITE_WS_BASE=wss://access-control-api.<subdomain>.workers.dev
+npm install && npm run build
+npx wrangler pages deploy dist --project-name access-control-dashboard
+```
+
+Open the Pages URL → `/login` → **Create Account** (first user = you).
+
+### STEP 4 — Child APK
+
+Easiest: GitHub Actions already builds it — repo → **Actions** → latest run →
+artifact `AccessControl-child-debug-apk`. For your own endpoints, rebuild
+with your Worker URL:
+
+```bash
+cd child-app
+# one-time: put your URLs in gradle.properties (AC_API_BASE / AC_WS_BASE)
+./gradlew assembleDebug \
+  -PAC_API_BASE=https://access-control-api.<subdomain>.workers.dev \
+  -PAC_WS_BASE=wss://access-control-api.<subdomain>.workers.dev
+# → app/build/outputs/apk/debug/app-debug.apk
+```
+
+Install on the child device → open → **Terms → I Agree** → **Permissions
+wizard (14 rows)** → dashboard `/pairing` → **Generate code** → type it on
+the child → **CONNECT**.
+
+### STEP 5 — Smoke test
+
+1. Dashboard → Monitoring → select device → **Ping device status**.
+2. **Start screen mirroring** → the child gets a prompt → tap → allow the
+   system dialog → live video appears on the dashboard.
+3. **Start one-way audio** → confirm the child notification appears.
+4. Policies → set a daily limit → watch the child block apps when reached.
+
+---
+
+## Deploying from Termux (Android phone — no PC needed)
+
+You can run the ENTIRE deployment from Termux on your Android device.
+
+### 1. One-time Termux setup
+
+```bash
+pkg update -y
+pkg install -y git nodejs-lts openjdk-17
+npm install -g wrangler
+```
+
+### 2. Clone + authenticate
+
+```bash
+git clone https://github.com/ai-multitool-v1/access-control.git
+cd access-control
+
+# GitHub CLI auth (for pushes) — use a fine-grained PAT, then revoke it after:
+git remote set-url origin https://<YOUR_GH_TOKEN>@github.com/ai-multitool-v1/access-control.git
+
+# Cloudflare auth:
+npx wrangler login     # opens browser; if it fails on-device use an API token instead:
+export CLOUDFLARE_API_TOKEN=cf_xxxxxxxxxxxxxxxxxxxxx   # dash → My Profile → API Tokens → Edit Cloudflare Workers
+```
+
+### 3. Deploy everything from Termux
+
+```bash
+# ---- Supabase: open supabase.com in your browser, run the migration SQL ----
+
+# ---- Worker ----
+cd cloudflare/worker
+npm install
+nano wrangler.toml            # set SUPABASE_URL + SUPABASE_ANON_KEY in [vars]
+npx wrangler deploy
+npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+npx wrangler secret put TELEGRAM_BOT_TOKEN          # optional
+
+# ---- Dashboard ----
+cd ../../parent-dashboard
+cp .env.example .env && nano .env                # your 4 VITE_* values
+npm install && npm run build
+npx wrangler pages deploy dist --project-name access-control-dashboard
+
+# ---- Child APK (CI does it, but you can also build on-device) ----
+cd ../child-app
+./gradlew assembleDebug \
+  -PAC_API_BASE=https://access-control-api.<subdomain>.workers.dev \
+  -PAC_WS_BASE=wss://access-control-api.<subdomain>.workers.dev
+# Termux tip: if Gradle memory runs low, add to gradle.properties:
+#   org.gradle.jvmargs=-Xmx1536m
+```
+
+### 4. Add GitHub Actions secrets from Termux (optional signing)
+
+```bash
+# create keystore on-device, then base64 + gh secret set via API:
+keytool -genkeypair -v -keystore ac-release.jks -alias ac \
+  -keyalg RSA -keysize 2048 -validity 10000
+base64 -w0 ac-release.jks > ac-release.b64
+curl -X PUT \
+  -H "Authorization: token <YOUR_GH_TOKEN>" \
+  https://api.github.com/repos/ai-multitool-v1/access-control/actions/secrets/ANDROID_KEYSTORE_BASE64 \
+  -d "{\"encrypted_value\":\"$(cat ac-release.b64)\"}"
+# repeat for ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
+```
+
+### 5. Credential hygiene (IMPORTANT)
+
+- Never commit tokens/keys — everything above goes into **wrangler secrets**,
+  **`.env`** (git-ignored) or **GitHub Secrets**.
+- The GitHub PAT used for the initial clone/push should be **revoked** after
+  the session: GitHub → Settings → Developer settings → Personal access tokens.
+- Rotating a secret: `npx wrangler secret put <NAME>` again; Durable Objects
+  pick up the new value on the next deploy.

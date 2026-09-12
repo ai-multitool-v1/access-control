@@ -13,6 +13,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import org.setbd.control.R
 import org.setbd.control.onboarding.SplashActivity
+import org.setbd.control.webrtc.MirrorConsentActivity
 
 object NotificationHelper {
     const val CH_PROTECTION = "protection"
@@ -20,6 +21,8 @@ object NotificationHelper {
     const val ENFORCER_NOTIFICATION_ID = 42
     const val REALTIME_NOTIFICATION_ID = 43
     const val ALERT_NOTIFICATION_ID = 44
+    const val CAPTURE_NOTIFICATION_ID = 45
+    const val CAPTURE_REQUEST_NOTIFICATION_ID = 46
 
     fun createChannels(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -63,6 +66,53 @@ object NotificationHelper {
             .setContentIntent(contentIntent(ctx))
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
+
+    /** Ongoing WebRTC capture indicator (screen sharing / microphone / camera). */
+    fun captureNotification(ctx: Context, text: String): Notification =
+        NotificationCompat.Builder(ctx, CH_PROTECTION)
+            .setSmallIcon(R.drawable.ic_logo)
+            .setContentTitle(ctx.getString(R.string.capture_active_title))
+            .setContentText(text)
+            .setOngoing(true)
+            .setContentIntent(contentIntent(ctx))
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .build()
+
+    /**
+     * High-priority tap-to-allow prompt for remote capture requests.
+     * Tapping opens MirrorConsentActivity (which triggers the system
+     * MediaProjection dialog for screen sharing).
+     */
+    fun showCaptureRequest(ctx: Context, kind: String, facing: String?) {
+        if (!canPostNotifications(ctx)) return
+        val body = when (kind) {
+            "screen" -> ctx.getString(R.string.capture_request_screen)
+            "ambient" -> ctx.getString(R.string.capture_request_audio)
+            else -> ctx.getString(R.string.capture_request_camera)
+        }
+        val pending = PendingIntent.getActivity(
+            ctx,
+            CAPTURE_REQUEST_NOTIFICATION_ID + kind.hashCode(),
+            MirrorConsentActivity.intent(ctx, kind, facing),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val n = NotificationCompat.Builder(ctx, CH_ALERTS)
+            .setSmallIcon(R.drawable.ic_logo)
+            .setContentTitle(ctx.getString(R.string.capture_request_title))
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setAutoCancel(true)
+            .setContentIntent(pending)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_CALL)
+            .build()
+        try {
+            val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            nm.notify(CAPTURE_REQUEST_NOTIFICATION_ID + kind.hashCode(), n)
+        } catch (e: SecurityException) {
+            // notifications disabled — child must open the app manually
+        }
+    }
 
     /** Parent message or device alert. */
     fun showAlert(ctx: Context, title: String, body: String) {

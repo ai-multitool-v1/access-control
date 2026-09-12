@@ -3,7 +3,7 @@
 // commands/responses/events, enforces the command allowlist, heartbeats,
 // timeouts, connection state persistence and offline wake-ups.
 
-import { ALLOWED_ACTIONS, CHILD_EVENTS } from '../../worker/src/protocol.js';
+import { ALLOWED_ACTIONS, CHILD_EVENTS, RTC_KINDS, RTC_ACTIONS_PARENT_TO_CHILD, RTC_ACTIONS_CHILD_TO_PARENT } from '../../worker/src/protocol.js';
 import { notifyDeviceEvent, pushWake } from '../../worker/src/notify/events.js';
 
 const COMMAND_TIMEOUT_MS = 15_000;
@@ -145,6 +145,44 @@ export class DeviceHub {
       }
       return;
     }
+
+    // WebRTC signaling relay (screen mirror / ambient audio / remote camera).
+    // Strictly structured: kind + action from a small fixed vocabulary, SDP and
+    // ICE fields clamped in size. Everything else is dropped.
+    if (msg.type === 'rtc') {
+      const p = msg.payload && typeof msg.payload === 'object' ? msg.payload : null;
+      if (!p) return;
+      const kind = typeof p.kind === 'string' ? p.kind : '';
+      const action = typeof p.action === 'string' ? p.action : '';
+      if (!RTC_KINDS.has(kind)) return;
+
+      if (role === 'parent') {
+        if (!RTC_ACTIONS_PARENT_TO_CHILD.has(action)) return;
+        if (!this.child) return;
+        this.sendToChild({ type: 'rtc', payload: this.sanitizeRtc(p, kind, action) });
+      } else {
+        if (!RTC_ACTIONS_CHILD_TO_PARENT.has(action)) return;
+        if (this.parents.size === 0) return;
+        this.broadcastToParents({ type: 'rtc', payload: this.sanitizeRtc(p, kind, action) });
+      }
+      return;
+    }
+  }
+
+  sanitizeRtc(p, kind, action) {
+    const clean = { kind, action };
+    if (typeof p.sdp === 'string') clean.sdp = p.sdp.slice(0, 200_000);
+    if (p.candidate && typeof p.candidate === 'object') {
+      clean.candidate = {
+        candidate: String(p.candidate.candidate || '').slice(0, 2000),
+        sdpMid: typeof p.candidate.sdpMid === 'string' ? p.candidate.sdpMid.slice(0, 32) : null,
+        sdpMLineIndex: Number.isFinite(Number(p.candidate.sdpMLineIndex))
+          ? Number(p.candidate.sdpMLineIndex) : 0,
+      };
+    }
+    if (typeof p.message === 'string') clean.message = p.message.slice(0, 300);
+    if (typeof p.facing === 'string') clean.facing = p.facing.slice(0, 10);
+    return clean;
   }
 
   onParentCommand(parentWs, msg) {

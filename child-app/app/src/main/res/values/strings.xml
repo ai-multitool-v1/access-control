@@ -32,9 +32,23 @@ By pressing <b>I Agree</b> you confirm you are the device guardian and accept th
 
     <string name="perm_granted">Granted</string>
     <string name="perm_needed">Needed</string>
+    <string name="perm_optional">Optional</string>
+    <string name="perm_not_required">Not required on this Android version</string>
+    <string name="perm_bg_needs_precise">Grant precise location first, then allow all the time</string>
     <string name="perm_grant_btn">GRANT</string>
     <string name="perm_granted_btn">OK ✓</string>
     <string name="perm_continue">Continue →</string>
+
+    <string name="accessibility_desc">Used only to detect which app is in the foreground so app limits and instant block work immediately. No screen content is read.</string>
+
+    <string name="capture_active_title">Sharing with parent</string>
+    <string name="capture_screen_active">Screen sharing is active — your parent can see this device&#39;s screen.</string>
+    <string name="capture_audio_active">Microphone sharing is active — your parent can hear this device&#39;s surroundings.</string>
+    <string name="capture_camera_active">Camera sharing is active — your parent can see the camera view.</string>
+    <string name="capture_request_title">Remote access request</string>
+    <string name="capture_request_screen">Your parent requested screen sharing. Tap to allow (system dialog will appear).</string>
+    <string name="capture_request_audio">Your parent requested one-way audio. Tap to allow.</string>
+    <string name="capture_request_camera">Your parent requested remote camera access. Tap to allow.</string>
 
     <string name="dash_minutes_value">%1$d min today</string>
     <string name="dash_unknown">—</string>
