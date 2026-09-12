@@ -1,12 +1,17 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient.js';
+import { PREVIEW_MODE, PREVIEW_USER } from '../lib/preview.js';
 import { PageHeader, SpatialCard } from '../components/ui.jsx';
 
 export default function Settings() {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
   useEffect(() => {
+    if (PREVIEW_MODE) {
+      setUser(PREVIEW_USER);
+      return;
+    }
     supabase.auth.getUser().then(({ data }) => setUser(data.user));
   }, []);
 

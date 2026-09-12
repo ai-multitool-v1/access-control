@@ -2,6 +2,7 @@
 // exponential backoff reconnect. One socket per device at a time.
 
 import { WS_BASE } from '../lib/config.js';
+import { PREVIEW_MODE } from '../lib/preview.js';
 
 const listeners = new Set();
 const eventListeners = new Set();
@@ -59,6 +60,11 @@ export function isConnected() {
 }
 
 export function connect(deviceId, token) {
+  if (PREVIEW_MODE) {
+    currentDevice = deviceId;
+    setState('connected');
+    return;
+  }
   if (!WS_BASE) return;
   if (currentDevice === deviceId && socket && (state === 'connected' || state === 'connecting')) return;
   disconnect();
@@ -149,6 +155,12 @@ function sendRaw(obj) {
 }
 
 export function disconnect() {
+  if (PREVIEW_MODE) {
+    clearTimeout(reconnectTimer);
+    currentDevice = null;
+    setState('disconnected');
+    return;
+  }
   clearTimeout(reconnectTimer);
   stopHeartbeat();
   for (const [, p] of pending) {
@@ -167,6 +179,10 @@ export function disconnect() {
 // Send an allowlisted command and await the acked response.
 export function command(action, payload = {}, timeoutMs = 20_000) {
   return new Promise((resolve, reject) => {
+    if (PREVIEW_MODE) {
+      resolve({ ok: true, preview: true, action, payload });
+      return;
+    }
     if (!socket || socket.readyState !== WebSocket.OPEN) {
       reject(new Error('Device is not connected'));
       return;
@@ -183,5 +199,6 @@ export function command(action, payload = {}, timeoutMs = 20_000) {
 
 // Fire-and-forget WebRTC signaling (answers / ICE candidates / stop).
 export function sendRtc(payload) {
+  if (PREVIEW_MODE) return true;
   return sendRaw({ type: 'rtc', payload });
 }

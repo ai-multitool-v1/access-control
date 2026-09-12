@@ -1,11 +1,16 @@
 import { useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient.js';
+import { PREVIEW_MODE } from '../lib/preview.js';
 import { connect, disconnect, onState } from '../services/ws.js';
 
 // Keeps one live socket for the given device while the component is mounted.
 export function useDeviceSocket(deviceId, onStateChange) {
   useEffect(() => {
     if (!deviceId) return undefined;
+    if (PREVIEW_MODE) {
+      if (onStateChange) onStateChange({ state: 'connected', deviceId });
+      return undefined;
+    }
     let active = true;
     let off = () => {};
 

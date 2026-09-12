@@ -1,0 +1,3 @@
+# Supabase project config for the Supabase CLI (link / db push).
+# Local development values only — CI supplies the real project ref via secrets.
+project_id = "access-control"

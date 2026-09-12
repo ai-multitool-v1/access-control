@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabaseClient.js';
 import { API_BASE } from '../lib/config.js';
+import { PREVIEW_MODE, previewApi } from '../lib/preview.js';
 
 async function authToken() {
   const { data } = await supabase.auth.getSession();
@@ -15,6 +16,7 @@ export class ApiError extends Error {
 }
 
 export async function api(path, { method = 'GET', body } = {}) {
+  if (PREVIEW_MODE) return previewApi(path, { method, body });
   const token = await authToken();
   if (!token) throw new ApiError(401, 'unauthorized', 'Please sign in');
   let res;

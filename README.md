@@ -341,6 +341,74 @@ the child → **CONNECT**.
 
 ---
 
+## Deploying from GitHub Actions (zero terminal — credentials in the Actions tab)
+
+Prefer not to touch a terminal at all? The repo ships three deploy workflows:
+
+| Workflow | What it deploys | Trigger |
+|----------|-----------------|---------|
+| **Deploy Cloudflare (Worker + DO + Pages)** | Worker + Durable Objects, then the parent dashboard to Cloudflare Pages | push to `main` touching `cloudflare/**` or `parent-dashboard/**`, or the **Run workflow** button |
+| **Deploy Supabase (migrations)** | The 12-table schema + RLS via `supabase db push` | push to `main` touching `supabase/**`, or the **Run workflow** button |
+| **Build Android (child APK)** | Debug/release APK artifact + release | push touching `child-app/**` or manual |
+
+### One-time setup — add repository secrets
+
+GitHub repo → **Settings → Secrets and variables → Actions → New repository secret**.
+Add only the secrets you need; missing ones make the corresponding job **skip
+gracefully (green)** instead of failing, so the pipeline stays healthy until
+you fill them in. Secrets are write-only — you can add/replace them any time
+and re-run **Actions → Deploy… → Run workflow**.
+
+**Cloudflare Worker + Durable Objects (required):**
+
+| Secret | Where to get it |
+|--------|-----------------|
+| `CLOUDFLARE_API_TOKEN` | Cloudflare dash → My Profile → API Tokens → **Create Token** → template *"Edit Cloudflare Workers"* (includes Pages) |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare dash → any domain / Workers overview → Account ID |
+| `SUPABASE_URL` | `https://<project-ref>.supabase.co` (Supabase → Settings → API) |
+| `SUPABASE_ANON_KEY` | Supabase → Settings → API → anon public |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Settings → API → service_role (stored as a **Worker secret**, never in the frontend) |
+
+**Optional Worker secrets:**
+
+| Secret | Purpose |
+|--------|---------|
+| `TELEGRAM_BOT_TOKEN` | Default Telegram bot fallback (per-parent tokens set in the dashboard still work) |
+| `FCM_SERVICE_ACCOUNT_JSON` | Firebase service-account JSON for FCM HTTP v1 pushes |
+
+**Cloudflare Pages — parent dashboard (required for the Pages job):**
+
+| Secret | Value |
+|--------|-------|
+| `VITE_SUPABASE_URL` | Same as `SUPABASE_URL` |
+| `VITE_SUPABASE_ANON_KEY` | Same as `SUPABASE_ANON_KEY` |
+| `VITE_API_BASE` | `https://access-control-api.<your-subdomain>.workers.dev` (worker URL after first deploy) |
+| `VITE_WS_BASE` | `wss://access-control-api.<your-subdomain>.workers.dev` |
+
+**Supabase migrations (required for the Supabase job):**
+
+| Secret | Where to get it |
+|--------|-----------------|
+| `SUPABASE_ACCESS_TOKEN` | Supabase dash → Account (avatar) → **Access Tokens** → Generate |
+| `SUPABASE_PROJECT_ID` | Supabase → Settings → General → **Reference ID** |
+| `SUPABASE_DB_PASSWORD` | The DB password chosen at project creation (reset it from Settings → Database if lost) |
+
+### Deploy flow
+
+1. Add the secrets above (any order — the jobs light up as soon as their secrets exist).
+2. Push to `main`, or open **Actions → Deploy Cloudflare… → Run workflow** and
+   **Actions → Deploy Supabase… → Run workflow**.
+3. The Worker job publishes `access-control-api.<subdomain>.workers.dev`,
+   syncs the server secrets, and the Pages job publishes the dashboard to
+   `https://access-control-dashboard.pages.dev`.
+4. Note your worker URL, then set `VITE_API_BASE` / `VITE_WS_BASE` secrets and
+   re-run the Pages job once (they must point at the final worker URL).
+
+Prefer the terminal (or Termux)? Use `scripts/deploy-cloudflare.sh` and
+`scripts/deploy-supabase.sh` — they do the same thing locally with prompts.
+
+---
+
 ## Deploying from Termux (Android phone — no PC needed)
 
 You can run the ENTIRE deployment from Termux on your Android device.

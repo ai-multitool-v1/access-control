@@ -1,0 +1,174 @@
+# Deploys the Access Control stack to Cloudflare.
+#
+# HOW TO ENABLE (no manual terminal needed):
+#   GitHub repo → Settings → Secrets and variables → Actions → "New repository secret"
+#   Add the secrets listed below, then either push to main or run
+#   "Actions → Deploy Cloudflare (Worker + DO + Pages) → Run workflow".
+#
+# REQUIRED SECRETS (Worker):
+#   CLOUDFLARE_API_TOKEN          API token with Workers + Pages edit permission
+#   CLOUDFLARE_ACCOUNT_ID         Your Cloudflare account id
+#   SUPABASE_URL                  https://<project-ref>.supabase.co   (public value)
+#   SUPABASE_ANON_KEY             Supabase public anon key
+#   SUPABASE_SERVICE_ROLE_KEY     Supabase service-role key (stored as a Worker secret)
+#
+# OPTIONAL SECRETS (Worker):
+#   TELEGRAM_BOT_TOKEN            Default bot token fallback
+#   FCM_SERVICE_ACCOUNT_JSON      Firebase service-account JSON for FCM HTTP v1
+#
+# REQUIRED SECRETS (Pages / parent dashboard):
+#   VITE_SUPABASE_URL             Same value as SUPABASE_URL
+#   VITE_SUPABASE_ANON_KEY        Same value as SUPABASE_ANON_KEY
+#   VITE_API_BASE                 https://access-control-api.<your-subdomain>.workers.dev
+#   VITE_WS_BASE                  wss://access-control-api.<your-subdomain>.workers.dev
+#
+# The jobs skip gracefully (green) while their secrets are absent.
+
+name: Deploy Cloudflare (Worker + DO + Pages)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'cloudflare/**'
+      - 'parent-dashboard/**'
+      - '.github/workflows/deploy-cloudflare.yml'
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'What to deploy'
+        type: choice
+        default: 'all'
+        options: [all, worker, pages]
+
+concurrency:
+  group: deploy-cloudflare
+  cancel-in-progress: false
+
+jobs:
+  worker:
+    name: Worker + Durable Objects
+    runs-on: ubuntu-latest
+    env:
+      HAS_CREDS: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+    steps:
+      - name: Skip — credentials not set yet
+        if: env.HAS_CREDS != 'true'
+        run: |
+          echo "CLOUDFLARE_API_TOKEN is not configured — skipping Worker deploy."
+          echo "Add repository secrets (Settings → Secrets and variables → Actions):"
+          echo "  CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, SUPABASE_URL,"
+          echo "  SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY"
+          echo "(optional: TELEGRAM_BOT_TOKEN, FCM_SERVICE_ACCOUNT_JSON)"
+
+      - uses: actions/checkout@v4
+        if: env.HAS_CREDS == 'true'
+      - uses: actions/setup-node@v4
+        if: env.HAS_CREDS == 'true'
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: cloudflare/worker/package-lock.json
+
+      - name: Install dependencies
+        if: env.HAS_CREDS == 'true'
+        working-directory: cloudflare/worker
+        run: npm ci
+
+      - name: Publish Worker + Durable Objects
+        if: env.HAS_CREDS == 'true'
+        working-directory: cloudflare/worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          ARGS=""
+          if [ -n "$SUPABASE_URL" ]; then
+            ARGS="$ARGS --var SUPABASE_URL:$SUPABASE_URL"
+          fi
+          if [ -n "$SUPABASE_ANON_KEY" ]; then
+            ARGS="$ARGS --var SUPABASE_ANON_KEY:$SUPABASE_ANON_KEY"
+          fi
+          npx wrangler deploy $ARGS
+
+      - name: Set Worker secrets (idempotent, skips empty)
+        if: env.HAS_CREDS == 'true'
+        working-directory: cloudflare/worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          FCM_SERVICE_ACCOUNT_JSON: ${{ secrets.FCM_SERVICE_ACCOUNT_JSON }}
+        run: |
+          put_secret() {
+            local name="$1" value="$2"
+            if [ -z "$value" ]; then
+              echo "- $name: not set, skipped"
+              return 0
+            fi
+            printf '%s' "$value" | npx wrangler secret put "$name" >/dev/null 2>&1 \
+              && echo "- $name: updated" \
+              || echo "- $name: update failed (check token permissions)"
+          }
+          put_secret SUPABASE_SERVICE_ROLE_KEY "$SUPABASE_SERVICE_ROLE_KEY"
+          put_secret TELEGRAM_BOT_TOKEN "$TELEGRAM_BOT_TOKEN"
+          put_secret FCM_SERVICE_ACCOUNT_JSON "$FCM_SERVICE_ACCOUNT_JSON"
+
+  pages:
+    name: Parent Dashboard → Cloudflare Pages
+    runs-on: ubuntu-latest
+    if: github.event.inputs.target != 'worker'
+    env:
+      HAS_CREDS: ${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.VITE_SUPABASE_URL != '' }}
+    steps:
+      - name: Skip — credentials not set yet
+        if: env.HAS_CREDS != 'true'
+        run: |
+          echo "Skipping Pages deploy."
+          echo "Required secrets: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID,"
+          echo "  VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY, VITE_API_BASE, VITE_WS_BASE"
+
+      - uses: actions/checkout@v4
+        if: env.HAS_CREDS == 'true'
+      - uses: actions/setup-node@v4
+        if: env.HAS_CREDS == 'true'
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: parent-dashboard/package-lock.json
+
+      - name: Build parent dashboard
+        if: env.HAS_CREDS == 'true'
+        working-directory: parent-dashboard
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_API_BASE: ${{ secrets.VITE_API_BASE }}
+          VITE_WS_BASE: ${{ secrets.VITE_WS_BASE }}
+        run: |
+          npm ci
+          npm run build
+
+      - name: Ensure Pages project exists
+        if: env.HAS_CREDS == 'true'
+        working-directory: parent-dashboard
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npx wrangler pages project create access-control-dashboard \
+            --production-branch=main 2>/dev/null || echo "Pages project already exists"
+
+      - name: Deploy to Cloudflare Pages
+        if: env.HAS_CREDS == 'true'
+        working-directory: parent-dashboard
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          npx wrangler pages deploy dist \
+            --project-name=access-control-dashboard \
+            --branch=main --commit-dirty=true

@@ -1,5 +1,6 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth.jsx';
+import { PREVIEW_MODE } from '../lib/preview.js';
 
 const NAV = [
   { to: '/dashboard', label: 'Dashboard', icon: 'M3 12l9-9 9 9M5 10v10h14V10' },
@@ -96,6 +97,11 @@ export default function Layout() {
 
       {/* Content */}
       <main className="flex-1 px-4 pb-28 pt-20 lg:ml-60 lg:px-8 lg:pb-10 lg:pt-8">
+        {PREVIEW_MODE && (
+          <div className="mb-4 rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-2.5 text-xs font-semibold text-amber-300">
+            LOCAL PREVIEW — mock data, no live connection. Start with VITE_PREVIEW_MODE=1 npm run dev.
+          </div>
+        )}
         <Outlet />
       </main>
     </div>
