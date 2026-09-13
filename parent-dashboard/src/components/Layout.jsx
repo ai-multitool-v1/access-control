@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { Send, Info, X, ExternalLink, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth.jsx';
 import { PREVIEW_MODE } from '../lib/preview.js';
 
@@ -17,41 +19,71 @@ const NAV = [
 
 function Icon({ d }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-4.5 w-4.5 h-[18px] w-[18px] shrink-0">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-[18px] w-[18px] shrink-0">
       <path d={d} />
     </svg>
+  );
+}
+
+function AboutModal({ onClose }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4" onClick={onClose}>
+      <div className="spatial-card w-full max-w-lg animate-fade-up p-6" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-start justify-between">
+          <h3 className="font-mono text-lg font-black uppercase tracking-widest text-neon">About Access Control</h3>
+          <button onClick={onClose} className="border-2 border-space-600 p-1 text-slate-400 hover:border-hazard hover:text-hazard">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <p className="mt-4 font-mono text-xs leading-relaxed text-slate-400">
+          Access Control is a next-generation, consent-first parental control platform:
+          Cloudflare Workers + Durable Objects realtime core, Supabase Postgres, WebRTC remote
+          access and an Android guardian agent. Developed by <span className="text-neon">Asif Khan — The CEO Of Silent Exploit Team Bd</span>.
+        </p>
+        <div className="mt-5 border-2 border-neon/40 bg-neon/5 p-4">
+          <div className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-neon-dim">Our Special Product</div>
+          <a href="https://ai-multitool.pages.dev" target="_blank" rel="noreferrer"
+            className="mt-2 inline-flex items-center gap-2 font-mono text-sm font-bold text-neon hover:underline">
+            AI Multitool <ExternalLink className="h-4 w-4" />
+          </a>
+          <p className="mt-1 font-mono text-[10px] text-slate-500">ai-multitool.pages.dev — the all-in-one AI toolkit.</p>
+        </div>
+        <a href="https://t.me/setbd_ceo" target="_blank" rel="noreferrer" className="btn-ghost mt-4 w-full">
+          <Send className="h-4 w-4" /> Feedback on Telegram
+        </a>
+      </div>
+    </div>
   );
 }
 
 export default function Layout() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
+  const [aboutOpen, setAboutOpen] = useState(false);
 
   return (
     <div className="flex min-h-screen">
       {/* Sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-20 hidden w-60 flex-col border-r border-white/10 bg-space-800/60 backdrop-blur-xl lg:flex">
+      <aside className="fixed inset-y-0 left-0 z-20 hidden w-60 flex-col border-r-2 border-space-600 bg-space-800/95 lg:flex">
         <div className="flex items-center gap-3 px-5 py-6">
-          <div className="animate-floaty flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-accent to-accent-cyan shadow-glow">
-            <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" className="h-5 w-5">
-              <path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6l8-4z" />
-            </svg>
+          <div className="animate-floaty flex h-10 w-10 items-center justify-center border-2 border-neon bg-neon/10 shadow-brutal-neon">
+            <ShieldCheck className="h-5 w-5 text-neon" />
           </div>
           <div>
-            <div className="text-sm font-bold tracking-wide text-white">Access Control</div>
-            <div className="text-[10px] uppercase tracking-widest text-slate-500">Parent Dashboard</div>
+            <div className="font-mono text-xs font-black uppercase tracking-widest text-white">Access Control</div>
+            <div className="font-mono text-[9px] uppercase tracking-[0.25em] text-neon-dim">Parent Console</div>
           </div>
         </div>
-        <nav className="flex-1 space-y-1 overflow-y-auto px-3">
+        <nav className="flex-1 space-y-0.5 overflow-y-auto px-3">
           {NAV.map((n) => (
             <NavLink
               key={n.to}
               to={n.to}
               className={({ isActive }) =>
-                `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
+                `flex items-center gap-3 border-2 px-3 py-2 font-mono text-xs font-bold uppercase tracking-wider transition ${
                   isActive
-                    ? 'bg-accent/15 text-white shadow-glow'
-                    : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
+                    ? 'border-neon bg-neon/10 text-neon shadow-brutal-neon'
+                    : 'border-transparent text-slate-400 hover:border-space-600 hover:bg-space-700 hover:text-slate-200'
                 }`
               }
             >
@@ -60,11 +92,17 @@ export default function Layout() {
             </NavLink>
           ))}
         </nav>
-        <div className="border-t border-white/10 p-4">
-          <div className="truncate text-xs text-slate-500">{user?.email}</div>
+        <div className="border-t-2 border-space-600 p-4">
+          <button onClick={() => setAboutOpen(true)} className="btn-ghost w-full py-2 text-[11px]">
+            <Info className="h-4 w-4" /> About
+          </button>
+          <a href="https://t.me/setbd_ceo" target="_blank" rel="noreferrer" className="btn-ghost mt-2 w-full py-2 text-[11px]">
+            <Send className="h-4 w-4" /> Feedback
+          </a>
+          <div className="mt-3 truncate font-mono text-[10px] text-slate-600">{user?.email}</div>
           <button
             onClick={async () => { await signOut(); navigate('/login'); }}
-            className="btn-ghost mt-3 w-full"
+            className="btn-ghost mt-2 w-full py-2 text-[11px]"
           >
             Sign out
           </button>
@@ -72,20 +110,25 @@ export default function Layout() {
       </aside>
 
       {/* Mobile top bar */}
-      <div className="fixed inset-x-0 top-0 z-20 flex items-center justify-between border-b border-white/10 bg-space-800/80 px-4 py-3 backdrop-blur-xl lg:hidden">
-        <div className="text-sm font-bold text-white">Access Control</div>
-        <button onClick={async () => { await signOut(); navigate('/login'); }} className="btn-ghost px-3 py-1.5 text-xs">
-          Sign out
-        </button>
+      <div className="fixed inset-x-0 top-0 z-20 flex items-center justify-between border-b-2 border-space-600 bg-space-800/95 px-4 py-3 lg:hidden">
+        <div className="font-mono text-xs font-black uppercase tracking-widest text-white">Access Control</div>
+        <div className="flex gap-2">
+          <button onClick={() => setAboutOpen(true)} className="border-2 border-space-600 p-1.5 text-neon">
+            <Info className="h-4 w-4" />
+          </button>
+          <button onClick={async () => { await signOut(); navigate('/login'); }} className="btn-ghost px-3 py-1.5 text-[10px]">
+            Sign out
+          </button>
+        </div>
       </div>
-      <nav className="fixed inset-x-0 bottom-0 z-20 flex overflow-x-auto border-t border-white/10 bg-space-800/90 px-2 py-2 backdrop-blur-xl lg:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-20 flex overflow-x-auto border-t-2 border-space-600 bg-space-800/95 px-2 py-2 lg:hidden">
         {NAV.map((n) => (
           <NavLink
             key={n.to}
             to={n.to}
             className={({ isActive }) =>
-              `flex min-w-[72px] flex-col items-center gap-1 rounded-lg px-2 py-1.5 text-[10px] ${
-                isActive ? 'text-accent-soft' : 'text-slate-500'
+              `flex min-w-[72px] flex-col items-center gap-1 px-2 py-1.5 font-mono text-[9px] font-bold uppercase ${
+                isActive ? 'text-neon' : 'text-slate-500'
               }`
             }
           >
@@ -98,12 +141,14 @@ export default function Layout() {
       {/* Content */}
       <main className="flex-1 px-4 pb-28 pt-20 lg:ml-60 lg:px-8 lg:pb-10 lg:pt-8">
         {PREVIEW_MODE && (
-          <div className="mb-4 rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-2.5 text-xs font-semibold text-amber-300">
+          <div className="mb-4 border-2 border-amber-400/50 bg-amber-400/10 px-4 py-2.5 font-mono text-xs font-bold text-amber-300 shadow-brutal">
             LOCAL PREVIEW — mock data, no live connection. Start with VITE_PREVIEW_MODE=1 npm run dev.
           </div>
         )}
         <Outlet />
       </main>
+
+      {aboutOpen && <AboutModal onClose={() => setAboutOpen(false)} />}
     </div>
   );
 }

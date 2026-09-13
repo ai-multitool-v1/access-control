@@ -1,9 +1,63 @@
+import {
+  Package, AlertTriangle, ShieldAlert, MapPin, Smartphone, Bell,
+  ShieldCheck, Activity, Unlock, Cpu, RefreshCw,
+} from 'lucide-react';
+
+// ---------- shared SVG icon (no emoji anywhere) ----------
+
+export function EmptyIcon({ className = 'h-10 w-10' }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"
+      strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <rect x="3" y="4" width="18" height="14" rx="1" />
+      <path d="M3 9h18M8 21h8M12 18v3M7 14h4M7 12h2" />
+    </svg>
+  );
+}
+
+export function ShieldIcon({ className = 'h-7 w-7' }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+      strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6l8-4z" />
+      <path d="M9 12l2 2 4-4" />
+    </svg>
+  );
+}
+
+// ---------- feed event icons (GUI timeline) ----------
+
+export function EventIcon({ type, className = 'h-4 w-4' }) {
+  const props = { className, strokeWidth: 2 };
+  switch (type) {
+    case 'app_open': return <Activity {...props} />;
+    case 'app_blocked': return <AlertTriangle {...props} />;
+    case 'zone_exit': return <MapPin {...props} />;
+    case 'sos': return <ShieldAlert {...props} />;
+    case 'permission': return <Unlock {...props} />;
+    case 'hardware': return <Cpu {...props} />;
+    case 'connect': return <Smartphone {...props} />;
+    case 'disconnect': return <Smartphone {...props} />;
+    case 'app_installed': return <Package {...props} />;
+    case 'app_uninstalled': return <Package {...props} />;
+    default: return <Bell {...props} />;
+  }
+}
+
+export const SEVERITY_STYLE = {
+  info: 'border-neon text-neon bg-neon/10',
+  warning: 'border-amber-400 text-amber-300 bg-amber-400/10',
+  critical: 'border-hazard text-hazard bg-hazard/10',
+};
+
+// ---------- layout primitives ----------
+
 export function PageHeader({ title, subtitle, actions }) {
   return (
     <div className="animate-fade-up mb-6 flex flex-wrap items-end justify-between gap-4">
       <div>
-        <h1 className="text-2xl font-bold text-white lg:text-3xl">{title}</h1>
-        {subtitle && <p className="mt-1 text-sm text-slate-400">{subtitle}</p>}
+        <h1 className="font-mono text-2xl font-black uppercase tracking-widest text-white lg:text-3xl">{title}</h1>
+        {subtitle && <p className="mt-1 font-mono text-xs uppercase tracking-wider text-slate-500">{subtitle}</p>}
       </div>
       {actions && <div className="flex gap-2">{actions}</div>}
     </div>
@@ -18,33 +72,33 @@ export function SpatialCard({ children, className = '', hover = false }) {
 
 export function StatusDot({ ok, pulse = true, label }) {
   return (
-    <span className="inline-flex items-center gap-2 text-sm">
+    <span className="inline-flex items-center gap-2 font-mono text-xs font-bold uppercase tracking-wider">
       <span className="relative flex h-2.5 w-2.5">
         {ok && pulse && (
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent-green opacity-60" />
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-neon opacity-60" />
         )}
-        <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${ok ? 'bg-accent-green' : 'bg-slate-500'}`} />
+        <span className={`relative inline-flex h-2.5 w-2.5 ${ok ? 'bg-neon' : 'bg-slate-600'}`} />
       </span>
-      {label && <span className={ok ? 'text-accent-green' : 'text-slate-400'}>{label}</span>}
+      {label && <span className={ok ? 'text-neon' : 'text-slate-500'}>{label}</span>}
     </span>
   );
 }
 
 export function Loading({ label = 'Loading…' }) {
   return (
-    <div className="flex items-center justify-center gap-3 py-16 text-slate-400">
-      <span className="h-5 w-5 animate-spin rounded-full border-2 border-accent border-t-transparent" />
+    <div className="flex items-center justify-center gap-3 py-16 font-mono text-xs uppercase tracking-widest text-slate-500">
+      <RefreshCw className="h-4 w-4 animate-spin text-neon" />
       {label}
     </div>
   );
 }
 
-export function EmptyState({ icon = '📦', title, hint, action }) {
+export function EmptyState({ icon, title, hint, action }) {
   return (
     <div className="spatial-card animate-fade-up flex flex-col items-center gap-3 px-6 py-14 text-center">
-      <div className="text-4xl">{icon}</div>
-      <div className="text-lg font-semibold text-white">{title}</div>
-      {hint && <p className="max-w-md text-sm text-slate-400">{hint}</p>}
+      <div className="text-neon-dim">{icon || <EmptyIcon />}</div>
+      <div className="text-lg font-bold text-white">{title}</div>
+      {hint && <p className="max-w-md font-mono text-xs text-slate-500">{hint}</p>}
       {action}
     </div>
   );
@@ -53,10 +107,10 @@ export function EmptyState({ icon = '📦', title, hint, action }) {
 export function ErrorBanner({ message, onRetry }) {
   if (!message) return null;
   return (
-    <div className="animate-fade-up mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-      <span>⚠️ {message}</span>
+    <div className="animate-fade-up mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md border-2 border-hazard/60 bg-hazard/10 px-4 py-3 text-sm text-red-200 shadow-brutal-red">
+      <span className="inline-flex items-center gap-2"><AlertTriangle className="h-4 w-4" /> {message}</span>
       {onRetry && (
-        <button onClick={onRetry} className="rounded-lg border border-red-400/40 px-3 py-1 text-xs font-semibold hover:bg-red-500/20">
+        <button onClick={onRetry} className="rounded-sm border border-hazard/60 px-3 py-1 font-mono text-[11px] font-bold uppercase hover:bg-hazard/20">
           Retry
         </button>
       )}
@@ -73,43 +127,42 @@ export function Toggle({ checked, onChange, label }) {
       aria-pressed={checked}
     >
       <span
-        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition ${
-          checked ? 'bg-accent shadow-glow' : 'bg-white/15'
+        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-sm border-2 transition ${
+          checked ? 'border-neon bg-neon shadow-brutal-neon' : 'border-space-600 bg-space-700'
         }`}
       >
         <span
-          className={`inline-block h-4.5 w-4.5 h-[18px] w-[18px] transform rounded-full bg-white shadow transition ${
-            checked ? 'translate-x-[24px]' : 'translate-x-[3px]'
+          className={`inline-block h-[16px] w-[16px] transform bg-white transition ${
+            checked ? 'translate-x-[22px]' : 'translate-x-[3px]'
           }`}
         />
       </span>
-      {label && <span className="text-sm text-slate-300">{label}</span>}
+      {label && <span className="font-mono text-xs uppercase tracking-wider text-slate-300">{label}</span>}
     </button>
   );
 }
 
 export function BarList({ items, unit = 'm' }) {
-  // items: [{ label, sublabel, value, extra }]
   const max = Math.max(1, ...items.map((i) => i.value));
-  if (items.length === 0) return <p className="py-6 text-center text-sm text-slate-500">No data for this period.</p>;
+  if (items.length === 0) return <p className="py-6 text-center font-mono text-xs uppercase text-slate-600">No data for this period.</p>;
   return (
     <div className="space-y-3">
       {items.map((i) => (
         <div key={i.label}>
-          <div className="mb-1 flex items-baseline justify-between gap-2 text-sm">
-            <span className="truncate font-medium text-slate-200">{i.label}</span>
+          <div className="mb-1 flex items-baseline justify-between gap-2 font-mono text-xs">
+            <span className="truncate font-bold text-slate-200">{i.label}</span>
             <span className="shrink-0 text-slate-400">
               {i.value} {unit}
-              {i.extra && <span className="ml-2 text-xs text-slate-500">{i.extra}</span>}
+              {i.extra && <span className="ml-2 text-[10px] text-slate-600">{i.extra}</span>}
             </span>
           </div>
-          <div className="h-2 overflow-hidden rounded-full bg-white/8 bg-white/10">
+          <div className="h-2.5 border border-space-600 bg-black/60">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-accent to-accent-cyan transition-all duration-700"
+              className="h-full bg-neon transition-all duration-700"
               style={{ width: `${Math.max(3, (i.value / max) * 100)}%` }}
             />
           </div>
-          {i.sublabel && <div className="mt-0.5 text-xs text-slate-500">{i.sublabel}</div>}
+          {i.sublabel && <div className="mt-0.5 font-mono text-[10px] text-slate-600">{i.sublabel}</div>}
         </div>
       ))}
     </div>
@@ -119,10 +172,40 @@ export function BarList({ items, unit = 'm' }) {
 export function Stat({ label, value, sub, accent = 'text-white' }) {
   return (
     <SpatialCard className="p-4">
-      <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">{label}</div>
-      <div className={`mt-1.5 text-2xl font-bold ${accent}`}>{value}</div>
-      {sub && <div className="mt-0.5 text-xs text-slate-500">{sub}</div>}
+      <div className="font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-neon-dim">{label}</div>
+      <div className={`mt-1.5 font-mono text-2xl font-black ${accent}`}>{value}</div>
+      {sub && <div className="mt-0.5 font-mono text-[10px] uppercase tracking-wider text-slate-600">{sub}</div>}
     </SpatialCard>
+  );
+}
+
+// ---------- GUI feed (device_events timeline) ----------
+
+export function FeedTimeline({ events, emptyText = 'No events yet.' }) {
+  if (!events || events.length === 0) {
+    return <p className="py-8 text-center font-mono text-xs uppercase text-slate-600">{emptyText}</p>;
+  }
+  return (
+    <ol className="relative space-y-0 border-l-2 border-space-600 pl-4">
+      {events.map((e) => (
+        <li key={e.id} className="relative pb-3">
+          <span className={`absolute -left-[26px] flex h-6 w-6 items-center justify-center border-2 bg-space-800 ${SEVERITY_STYLE[e.severity] || SEVERITY_STYLE.info}`}>
+            <EventIcon type={e.type} className="h-3.5 w-3.5" />
+          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={`chip ${SEVERITY_STYLE[e.severity] || SEVERITY_STYLE.info}`}>{e.type}</span>
+            <span className="text-sm font-semibold text-slate-100">{e.title}</span>
+            <span className="ml-auto font-mono text-[10px] text-slate-600">{fmtTime(e.created_at)}</span>
+          </div>
+          {e.package_name && <div className="mt-0.5 font-mono text-[11px] text-neon-dim">{e.package_name}</div>}
+          {e.detail && Object.keys(e.detail || {}).length > 0 && (
+            <div className="mt-1 break-all font-mono text-[10px] text-slate-500">
+              {Object.entries(e.detail).slice(0, 4).map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`).join(' · ')}
+            </div>
+          )}
+        </li>
+      ))}
+    </ol>
   );
 }
 
@@ -137,4 +220,11 @@ export function fmtTime(iso) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
   return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+export function fmtDate(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString(undefined, { dateStyle: 'medium' });
 }

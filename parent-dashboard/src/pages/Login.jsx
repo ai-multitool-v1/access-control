@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { ShieldCheck } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient.js';
+import { API_BASE } from '../lib/config.js';
 import { SpatialCard } from '../components/ui.jsx';
 
 export default function Login() {
@@ -19,9 +21,21 @@ export default function Login() {
     setBusy(true);
     try {
       if (mode === 'register') {
-        const { error: err } = await supabase.auth.signUp({ email, password });
+        // No email verification needed — the Worker confirms the account
+        // server-side with the service-role key, then we sign in directly.
+        const res = await fetch(`${API_BASE}/api/auth/signup`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const msg = data?.error?.message || 'Signup failed';
+          throw new Error(msg);
+        }
+        const { error: err } = await supabase.auth.signInWithPassword({ email, password });
         if (err) throw err;
-        setInfo('Account created. Check your email to confirm, then sign in.');
+        navigate('/dashboard');
       } else {
         const { error: err } = await supabase.auth.signInWithPassword({ email, password });
         if (err) throw err;
@@ -38,13 +52,11 @@ export default function Login() {
     <div className="flex min-h-screen items-center justify-center px-4">
       <SpatialCard className="w-full max-w-md animate-fade-up p-8">
         <div className="mb-8 flex flex-col items-center gap-3 text-center">
-          <div className="animate-floaty flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-accent to-accent-cyan shadow-glow">
-            <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" className="h-7 w-7">
-              <path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6l8-4z" />
-            </svg>
+          <div className="animate-floaty flex h-14 w-14 items-center justify-center border-2 border-neon bg-neon/10 shadow-brutal-neon">
+            <ShieldCheck className="h-7 w-7 text-neon" />
           </div>
-          <h1 className="text-2xl font-bold text-white">Access Control</h1>
-          <p className="text-sm text-slate-400">Parent sign-in for family protection</p>
+          <h1 className="font-mono text-2xl font-black uppercase tracking-[0.2em] text-white">Access Control</h1>
+          <p className="font-mono text-[11px] uppercase tracking-widest text-neon-dim">Next-gen family protection system</p>
         </div>
 
         <form onSubmit={submit} className="space-y-4">
@@ -55,25 +67,39 @@ export default function Login() {
           </div>
           <div>
             <label className="label-text" htmlFor="password">Password</label>
-            <input id="password" type="password" required minLength={6} autoComplete="current-password"
+            <input id="password" type="password" required minLength={6}
+              autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
               className="input-field" value={password} onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••" />
           </div>
 
-          {error && <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</p>}
-          {info && <p className="rounded-lg border border-accent-green/30 bg-accent-green/10 px-3 py-2 text-sm text-accent-green">{info}</p>}
+          {error && <p className="border-2 border-hazard/60 bg-hazard/10 px-3 py-2 font-mono text-xs text-red-300">{error}</p>}
+          {info && <p className="border-2 border-neon/60 bg-neon/10 px-3 py-2 font-mono text-xs text-neon">{info}</p>}
 
           <button type="submit" disabled={busy} className="btn-primary w-full">
             {busy ? 'Please wait…' : mode === 'login' ? 'Sign In' : 'Create Account'}
           </button>
         </form>
 
+        {mode === 'register' && (
+          <p className="mt-3 text-center font-mono text-[10px] uppercase tracking-wider text-slate-500">
+            No email verification needed — instant access
+          </p>
+        )}
+
         <button
           onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); setInfo(''); }}
-          className="mt-4 w-full text-center text-sm text-slate-400 hover:text-slate-200"
+          className="mt-4 w-full text-center font-mono text-xs text-slate-400 hover:text-neon"
         >
-          {mode === 'login' ? "New parent? Create an account →" : 'Already registered? Sign in →'}
+          {mode === 'login' ? 'New parent? Create an account →' : 'Already registered? Sign in →'}
         </button>
+
+        <div className="mt-6 border-t-2 border-space-600 pt-4 text-center">
+          <a href="https://t.me/setbd_ceo" target="_blank" rel="noreferrer"
+            className="font-mono text-[10px] uppercase tracking-widest text-neon-dim hover:text-neon">
+            Developed By Asif Khan — The CEO Of Silent Exploit Team Bd
+          </a>
+        </div>
       </SpatialCard>
     </div>
   );

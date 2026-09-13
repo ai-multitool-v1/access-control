@@ -15,35 +15,49 @@ body,
 body {
   @apply bg-space-900 text-slate-200 font-sans antialiased;
   background-image:
-    radial-gradient(1200px 600px at 15% -10%, rgba(124, 108, 246, 0.16), transparent 60%),
-    radial-gradient(900px 500px at 90% 0%, rgba(79, 195, 247, 0.12), transparent 55%),
-    radial-gradient(1000px 800px at 50% 110%, rgba(124, 108, 246, 0.08), transparent 60%);
+    linear-gradient(rgba(0, 255, 200, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 255, 200, 0.025) 1px, transparent 1px),
+    radial-gradient(1000px 500px at 10% -10%, rgba(0, 255, 200, 0.07), transparent 60%),
+    radial-gradient(900px 500px at 95% 0%, rgba(255, 46, 99, 0.05), transparent 55%);
+  background-size: 44px 44px, 44px 44px, auto, auto;
   background-attachment: fixed;
 }
 
+::selection {
+  background: rgba(0, 255, 200, 0.3);
+}
+
 @layer components {
+  /* cyber-neo-brutalism: hard 2px borders, offset solid shadows, sharp corners */
   .spatial-card {
-    @apply rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl shadow-float transition-all duration-300;
+    @apply rounded-md border-2 border-space-600 bg-space-800/90 shadow-brutal transition-all duration-200;
   }
   .spatial-card-hover {
-    @apply hover:-translate-y-1 hover:border-white/20 hover:shadow-glow;
+    @apply hover:-translate-y-0.5 hover:border-neon hover:shadow-brutal-neon;
   }
   .spatial-btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-200 active:scale-[0.97] disabled:opacity-50 disabled:pointer-events-none;
+    @apply inline-flex items-center justify-center gap-2 rounded-md border-2 border-space-600 px-4 py-2.5 text-sm font-bold uppercase tracking-wide transition-all duration-150 active:translate-x-[2px] active:translate-y-[2px] active:shadow-none disabled:opacity-40 disabled:pointer-events-none;
   }
   .btn-primary {
-    @apply spatial-btn bg-gradient-to-br from-accent to-accent-soft text-white shadow-glow hover:brightness-110;
+    @apply spatial-btn border-neon bg-neon text-black shadow-brutal-neon hover:brightness-110;
   }
   .btn-ghost {
-    @apply spatial-btn border border-white/15 bg-white/5 text-slate-200 hover:bg-white/10;
+    @apply spatial-btn bg-space-700 text-slate-200 shadow-brutal hover:border-neon hover:text-neon;
   }
   .btn-danger {
-    @apply spatial-btn border border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20;
+    @apply spatial-btn border-hazard bg-hazard/10 text-hazard shadow-brutal-red hover:bg-hazard/20;
   }
   .input-field {
-    @apply w-full rounded-xl border border-white/15 bg-space-700/70 px-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/40;
+    @apply w-full rounded-md border-2 border-space-600 bg-space-700/80 px-4 py-2.5 font-mono text-sm text-slate-100 placeholder-slate-500 outline-none transition focus:border-neon focus:shadow-brutal-neon;
   }
   .label-text {
-    @apply mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-400;
+    @apply mb-1.5 block font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-neon-dim;
   }
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-sm border px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider;
+  }
+  .chip-info { @apply chip border-cyan-400/50 text-cyan-300 bg-cyan-400/10; }
+  .chip-warn { @apply chip border-amber-400/50 text-amber-300 bg-amber-400/10; }
+  .chip-crit { @apply chip border-hazard text-hazard bg-hazard/10; }
+  .chip-ok { @apply chip border-neon text-neon bg-neon/10; }
 }
