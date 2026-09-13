@@ -40,11 +40,28 @@ jobs:
           AC_WS_BASE: ${{ vars.AC_WS_BASE }}
         run: |
           chmod +x gradlew
-          ARGS=""
+          ARGS="--no-build-cache"
           if [ -n "$AC_API_BASE" ]; then ARGS="$ARGS -PAC_API_BASE=$AC_API_BASE"; fi
           if [ -n "$AC_WS_BASE" ]; then ARGS="$ARGS -PAC_WS_BASE=$AC_WS_BASE"; fi
           ./gradlew assembleDebug $ARGS --stacktrace
-          echo "APK baked with API_BASE=${AC_API_BASE:-https://access-control-api.ai-multitools.workers.dev}"
+
+      - name: Verify APK has the real API base baked in
+        env:
+          AC_API_BASE: ${{ vars.AC_API_BASE }}
+        run: |
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          EXPECTED="${AC_API_BASE:-https://access-control-api.ai-multitools.workers.dev}"
+          HOST=$(echo "$EXPECTED" | sed -E 's#https?://##')
+          if unzip -p "$APK" 'classes*.dex' | grep -aq "YOUR-SUBDOMAIN"; then
+            echo "::error::APK still contains placeholder YOUR-SUBDOMAIN — stale BuildConfig"
+            exit 1
+          fi
+          if unzip -p "$APK" 'classes*.dex' | grep -aq "$HOST"; then
+            echo "✓ APK verified: $HOST baked into BuildConfig"
+          else
+            echo "::error::APK is missing expected API host $HOST"
+            exit 1
+          fi
 
       - name: Run unit tests
         run: ./gradlew testDebugUnitTest --stacktrace || echo "no tests yet"

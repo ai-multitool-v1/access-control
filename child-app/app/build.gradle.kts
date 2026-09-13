@@ -11,13 +11,14 @@ plugins {
 // Real deployed endpoints are the DEFAULT so every build (CI, Termux, local)
 // produces a working APK. Override with -PAC_API_BASE=... / -PAC_WS_BASE=...
 // or env vars AC_API_BASE / AC_WS_BASE if you redeploy under a different name.
+// Blank-safe: CI exports env vars as "" when unset — treat those as absent too.
+fun acProp(name: String): String? =
+    (project.findProperty(name) as String?)?.takeIf { it.isNotBlank() }
+        ?: System.getenv(name)?.takeIf { it.isNotBlank() }
+
 val DEFAULT_API_BASE = "https://access-control-api.ai-multitools.workers.dev"
-val apiBase: String = (project.findProperty("AC_API_BASE") as String?)
-    ?: System.getenv("AC_API_BASE")
-    ?: DEFAULT_API_BASE
-val wsBase: String = (project.findProperty("AC_WS_BASE") as String?)
-    ?: System.getenv("AC_WS_BASE")
-    ?: apiBase.replace("https://", "wss://")
+val apiBase: String = acProp("AC_API_BASE") ?: DEFAULT_API_BASE
+val wsBase: String = acProp("AC_WS_BASE") ?: apiBase.replace("https://", "wss://")
 
 android {
     namespace = "org.setbd.control"
@@ -27,8 +28,8 @@ android {
         applicationId = "org.setbd.control"
         minSdk = 24
         targetSdk = 34
-        versionCode = 3
-        versionName = "1.1.1"
+        versionCode = 4
+        versionName = "1.1.2"
         buildConfigField("String", "API_BASE", "\"$apiBase\"")
         buildConfigField("String", "WS_BASE", "\"$wsBase\"")
     }

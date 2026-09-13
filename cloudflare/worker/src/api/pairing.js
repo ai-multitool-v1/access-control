@@ -3,7 +3,7 @@
 // claim (child): exchange code for a device credential. Rate limited + single use.
 
 import { json, err, HttpError, readJson, str, clientIp } from '../lib/respond.js';
-import { sbInsert } from '../lib/supabase.js';
+import { sbInsert, sbRest } from '../lib/supabase.js';
 import { sha256hex } from '../auth/auth.js';
 
 function hubStub(env) {
@@ -11,6 +11,23 @@ function hubStub(env) {
 }
 
 export async function handlePairingGenerate(request, env, parent) {
+  // Self-heal: accounts created before the on_auth_user_created trigger existed
+  // may lack a profiles row — devices.parent_id would then fail its FK at claim
+  // time. Upsert (merge-duplicates) is idempotent for healthy accounts.
+  try {
+    await sbRest(env, 'profiles', {
+      method: 'POST',
+      body: {
+        id: parent.id,
+        email: parent.email || `parent-${parent.id}@setbd.local`,
+        display_name: (parent.email || 'parent').split('@')[0],
+      },
+      prefer: 'resolution=merge-duplicates,return=minimal',
+    });
+  } catch (e) {
+    console.error('profile_selfheal_failed', e && e.message);
+  }
+
   const res = await hubStub(env).fetch('https://pairing-hub.local/generate', {
     method: 'POST',
     body: JSON.stringify({ parentId: parent.id }),
