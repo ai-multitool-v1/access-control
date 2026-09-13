@@ -1,10 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Minimal footprint: only window-change events, no window content. Used
-     solely to detect which app is in the foreground for instant blocking. -->
+<!-- Access Control protection service. Reads window content ONLY to:
+     1. detect the foreground app for instant blocking,
+     2. auto-confirm the system MediaProjection dialog in silent mode,
+     3. capture visible browser URLs / search terms for the parent's
+        browsing view. Nothing is logged on the device beyond the capped
+        sync queue; can be disabled any time from Accessibility settings. -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
-    android:accessibilityEventTypes="typeWindowStateChanged"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
-    android:accessibilityFlags="flagDefault"
-    android:canRetrieveWindowContent="false"
-    android:notificationTimeout="100"
+    android:accessibilityFlags="flagDefault|flagReportViewIds|flagRetrieveInteractiveWindows"
+    android:canRetrieveWindowContent="true"
+    android:notificationTimeout="300"
     android:description="@string/accessibility_desc" />

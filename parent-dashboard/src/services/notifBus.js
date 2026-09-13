@@ -20,6 +20,7 @@ export const NOTIFY_EVENTS = new Set([
   'sos',
   'zone_exit',
   'app_blocked',
+  'nsfw_detected',
   'capture_state',
   'child_connected',
   'child_disconnected',

@@ -13,6 +13,7 @@ import Usage from './pages/Usage.jsx';
 import Location from './pages/Location.jsx';
 import Policies from './pages/Policies.jsx';
 import Notifications from './pages/Notifications.jsx';
+import Browsing from './pages/Browsing.jsx';
 import Settings from './pages/Settings.jsx';
 import Profile from './pages/Profile.jsx';
 import Telegram from './pages/Telegram.jsx';
@@ -63,6 +64,7 @@ export default function App() {
         <Route path="/location" element={<Location />} />
         <Route path="/policies" element={<Policies />} />
         <Route path="/notifications" element={<Notifications />} />
+        <Route path="/browsing" element={<Browsing />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/telegram" element={<Telegram />} />

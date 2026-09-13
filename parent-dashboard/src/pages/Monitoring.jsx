@@ -100,10 +100,28 @@ export default function Monitoring() {
     });
   }
 
-  async function run(label, action, payload = {}) {
+  async function run(label, action, payload = {}, quiet = false) {
     try {
-      await command(action, payload);
-      push(label);
+      const res = await command(action, payload);
+      push(`${label} — response received`);
+      if (quiet) return; // RTC starts open their own big live modal instead
+      // EVERY action button shows its parsed result, not just a feed line:
+      // status / permissions / lock result etc. open in the detail modal.
+      const p = res && typeof res === 'object' ? res : { result: String(res) };
+      const rows = Object.entries(p)
+        .map(([k, v]) => ({
+          field: k,
+          value: typeof v === 'object' ? JSON.stringify(v) : String(v),
+        }));
+      setDataView({
+        title: `${label} — device response`,
+        subtitle: `parsed result · ${new Date().toLocaleTimeString()}`,
+        columns: [
+          { key: 'field', label: 'Field', width: '150px' },
+          { key: 'value', label: 'Value' },
+        ],
+        rows: rows.length > 0 ? rows : [{ field: 'result', value: 'OK' }],
+      });
     } catch (e) {
       push(`${label} failed: ${e.message}`);
       rtc.setError(e.message);
@@ -173,26 +191,34 @@ export default function Monitoring() {
     })),
   });
 
-  const historyView = (res, title) => ({
-    title,
-    subtitle: res.mode === 'urls'
-      ? 'browser URL history from the device'
-      : res.note || 'app-level history (browsers no longer expose URL history)',
-    columns: [
-      { key: 'primary', label: res.mode === 'urls' ? 'URL' : 'App' },
-      { key: 'secondary', label: 'Detail' },
-      { key: 'when', label: 'When', width: '150px' },
-    ],
-    rows: (res.items || []).map((i) => ({
-      primary: res.mode === 'urls' ? i.url : (i.label || i.packageName),
-      secondary: res.mode === 'urls' ? (i.title || '') : i.packageName,
-      when: fmtTime(i.ts || null),
-    })),
-  });
+  const historyView = (res, title) => {
+    const captured = res.mode === 'captured' || res.mode === 'urls';
+    const items = res.items || [];
+    return {
+      title,
+      subtitle: captured
+        ? `URLs & searches captured on the device${res.capturedCount ? ` · ${res.capturedCount} freshly captured` : ''}`
+        : res.note || 'app-level history (browsers no longer expose URL history)',
+      columns: [
+        { key: 'kind', label: 'Type', width: '90px' },
+        { key: 'primary', label: 'URL / Search' },
+        { key: 'secondary', label: 'Detail' },
+        { key: 'when', label: 'When', width: '150px' },
+      ],
+      rows: items.map((i) => ({
+        kind: i.kind === 'search' ? 'SEARCH' : i.kind === 'session' ? 'APP' : 'URL',
+        primary: i.url || i.label || i.packageName || '',
+        secondary: [i.packageName, i.title].filter(Boolean).join(' · ')
+          + (i.nsfw ? '  ⚠ ADULT/NSFW' : ''),
+        when: fmtTime(i.ts || null),
+        nsfw: Boolean(i.nsfw),
+      })),
+    };
+  };
 
-  const startScreen = () => { rtc.markRequested('screen'); run('Screen mirror requested', 'start_screen_mirror'); };
-  const startAmbient = () => { rtc.markRequested('ambient'); run('One-way audio requested', 'start_ambient_audio'); };
-  const startCamera = (facing) => { rtc.markRequested('camera'); run(`Remote camera (${facing}) requested`, 'start_remote_camera', { facing }); };
+  const startScreen = () => { rtc.markRequested('screen'); run('Screen mirror requested', 'start_screen_mirror', {}, true); };
+  const startAmbient = () => { rtc.markRequested('ambient'); run('One-way audio requested', 'start_ambient_audio', {}, true); };
+  const startCamera = (facing) => { rtc.markRequested('camera'); run(`Remote camera (${facing}) requested`, 'start_remote_camera', { facing }, true); };
   const endRemote = () => {
     run('Remote access stopped', 'stop_screen_mirror');
     rtc.markIdle();
@@ -329,7 +355,11 @@ export default function Monitoring() {
                     const meta = EVENT_META[e.event] || EVENT_META._default;
                     const EVIcon = meta.icon;
                     return (
-                      <li key={i}>
+                      <li
+                        key={i}
+                        className="animate-fade-up"
+                        style={{ animationDelay: `${Math.min(i * 35, 500)}ms` }}
+                      >
                         <button
                           className="flex w-full items-start gap-3 border-2 border-space-600 bg-space-700/40 px-3 py-2.5 text-left transition hover:border-neon"
                           onClick={() => openPayload(e, meta.label)}

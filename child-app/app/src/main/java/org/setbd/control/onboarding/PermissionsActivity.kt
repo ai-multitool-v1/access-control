@@ -176,6 +176,14 @@ class PermissionsActivity : AppCompatActivity() {
                     }
                 }
             ),
+            // 12b. All files access — lets the file browser open file DATA
+            //      (documents / PDFs / audio), not just folder listings.
+            PermRow(
+                findViewById(R.id.permAllFilesStatus), findViewById(R.id.permAllFilesBtn),
+                { PermissionManager.allFilesAccessGranted(this) },
+                { PermissionManager.openAllFilesAccessSettings(this) },
+                optional = true
+            ),
             // 13. Install unknown apps — protection updates wizard
             PermRow(
                 findViewById(R.id.permInstallStatus), findViewById(R.id.permInstallBtn),

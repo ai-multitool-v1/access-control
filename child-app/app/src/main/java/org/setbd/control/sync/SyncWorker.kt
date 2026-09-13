@@ -62,6 +62,14 @@ class SyncWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, 
             }
         }
 
+        // 2b. Browser history queue — URLs / searches captured by the
+        //     accessibility service (best-effort, retried next cycle).
+        try {
+            org.setbd.control.monitoring.BrowserCapture.flush(applicationContext)
+        } catch (e: Exception) {
+            // queue stays for the next sync
+        }
+
         // 3. FCM token registration (optional; active when Firebase configured)
         Prefs.fcmToken?.let { fcm ->
             try {

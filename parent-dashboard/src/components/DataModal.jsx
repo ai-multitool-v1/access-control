@@ -79,8 +79,8 @@ export default function DataModal({ title, subtitle, columns, rows, onClose, emp
     filtered.map((r) => columns.map((c) => String(r[c.key] ?? '')).join('\t')).join('\n');
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-3 sm:p-4" onClick={onClose}>
-      <div className="spatial-card flex max-h-[85vh] w-full max-w-2xl flex-col p-4 sm:p-5" onClick={(e) => e.stopPropagation()}>
+    <div className="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-3 sm:p-4" onClick={onClose}>
+      <div className="spatial-card animate-scale-in flex max-h-[85vh] w-full max-w-2xl flex-col p-4 sm:p-5" onClick={(e) => e.stopPropagation()}>
         <div className="mb-3 flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h3 className="truncate font-mono text-sm font-black uppercase tracking-widest text-white">{title}</h3>
@@ -123,11 +123,11 @@ export default function DataModal({ title, subtitle, columns, rows, onClose, emp
           <CopyButton text={copyAll()} label="Copy all" />
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto border-2 border-space-600">
+        <div className="min-h-0 flex-1 overflow-auto border-2 border-space-600">
           {filtered.length === 0 ? (
             <p className="py-10 text-center font-mono text-xs uppercase text-slate-600">{emptyText}</p>
           ) : (
-            <table className="w-full text-left">
+            <table className="w-full min-w-[420px] text-left">
               <thead className="sticky top-0 bg-space-800">
                 <tr className="border-b-2 border-space-600">
                   {columns.map((c) => (

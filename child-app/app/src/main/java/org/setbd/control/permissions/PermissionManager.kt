@@ -73,6 +73,43 @@ object PermissionManager {
 
     fun accessibilityEnabled(ctx: Context): Boolean = BlockAccessibilityService.isEnabled(ctx)
 
+    /**
+     * Silent command mode: when Device admin + Accessibility are both ON the
+     * parent's commands execute without the repeated child allow prompts
+     * (remote capture still shows Android's own system indicators).
+     */
+    fun silentModeActive(ctx: Context): Boolean =
+        adminActive(ctx) && accessibilityEnabled(ctx)
+
+    /**
+     * All Files Access (MANAGE_EXTERNAL_STORAGE). On Android 13+ the granular
+     * media permissions cannot read documents/PDFs/audio — the file browser
+     * needs this to access file DATA, not just folder listings.
+     */
+    fun allFilesAccessGranted(ctx: Context): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return storageRuntimeGranted(ctx)
+        return try {
+            android.os.Environment.isExternalStorageManager()
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    fun openAllFilesAccessSettings(ctx: Context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            startActivity(ctx, Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS))
+            return
+        }
+        val i = Intent(
+            Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+            Uri.parse("package:${ctx.packageName}")
+        )
+        runCatching { startActivity(ctx, i) }
+            .onFailure {
+                startActivity(ctx, Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+            }
+    }
+
     fun micGranted(ctx: Context): Boolean = granted(ctx, Manifest.permission.RECORD_AUDIO)
 
     fun cameraGranted(ctx: Context): Boolean = granted(ctx, Manifest.permission.CAMERA)
@@ -88,13 +125,19 @@ object PermissionManager {
     fun commsGranted(ctx: Context): Boolean =
         contactsGranted(ctx) && phoneGranted(ctx) && smsGranted(ctx)
 
-    fun storageGranted(ctx: Context): Boolean {
+    private fun storageRuntimeGranted(ctx: Context): Boolean {
         return if (Build.VERSION.SDK_INT >= 33) {
             granted(ctx, Manifest.permission.READ_MEDIA_IMAGES) &&
                 granted(ctx, Manifest.permission.READ_MEDIA_VIDEO)
         } else {
             granted(ctx, Manifest.permission.READ_EXTERNAL_STORAGE)
         }
+    }
+
+    /** Media permissions OR full All-Files-Access unlock storage features. */
+    fun storageGranted(ctx: Context): Boolean {
+        if (allFilesAccessGranted(ctx)) return true
+        return storageRuntimeGranted(ctx)
     }
 
     fun installUnknownAppsGranted(ctx: Context): Boolean {

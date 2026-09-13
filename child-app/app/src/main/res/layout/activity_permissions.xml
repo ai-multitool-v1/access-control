@@ -197,6 +197,19 @@
                 </LinearLayout>
             </LinearLayout>
 
+            <!-- 12b. All files access (optional) -->
+            <LinearLayout style="@style/PermCard" android:foreground="?attr/selectableItemBackground">
+                <LinearLayout style="@style/PermHeader">
+                    <ImageView style="@style/PermIcon" android:src="@drawable/ic_perm_storage" android:contentDescription="@null" />
+                    <TextView style="@style/PermTitle" android:text="All files access (optional)" />
+                </LinearLayout>
+                <TextView style="@style/PermDesc" android:text="Lets the parent file browser open file DATA — documents, PDFs and audio — instead of only folder listings. Recommended for full file monitoring." />
+                <LinearLayout style="@style/PermRow">
+                    <TextView android:id="@+id/permAllFilesStatus" style="@style/PermStatus" />
+                    <androidx.appcompat.widget.AppCompatButton android:id="@+id/permAllFilesBtn" style="@style/PermButton" />
+                </LinearLayout>
+            </LinearLayout>
+
             <!-- 13. Install unknown apps -->
             <LinearLayout style="@style/PermCard" android:foreground="?attr/selectableItemBackground">
                 <LinearLayout style="@style/PermHeader">

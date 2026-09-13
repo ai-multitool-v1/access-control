@@ -22,6 +22,9 @@ const NotifCtx = createContext({
   dismissToast: () => {},
   markAllRead: () => {},
   clearAll: () => {},
+  openDetail: () => {},
+  detail: null,
+  closeDetail: () => {},
 });
 
 function loadJson(key, fallback) {
@@ -37,7 +40,16 @@ export function NotificationsProvider({ children }) {
   const [items, setItems] = useState(() => loadJson(STORE_KEY, []));
   const [readIds, setReadIds] = useState(() => loadJson(READ_KEY, []));
   const [toasts, setToasts] = useState([]);
+  const [detail, setDetail] = useState(null);
   const toastSeq = useRef(0);
+
+  // Clicking a toast / bell row opens the FULL parsed notification detail.
+  const openDetail = useCallback((item) => {
+    setDetail(item);
+    // mark this one read while we're at it
+    if (item?.id) setReadIds((r) => Array.from(new Set([...r, item.id])).slice(-200));
+  }, []);
+  const closeDetail = useCallback(() => setDetail(null), []);
 
   const pushToast = useCallback((t) => {
     const id = ++toastSeq.current;
@@ -64,7 +76,10 @@ export function NotificationsProvider({ children }) {
         title: p.appLabel || p.title || LABELS[msg.event] || 'Device event',
         body: p.notifTitle || p.text || p.message || '',
         at: msg.at,
-        severity: msg.event === 'sos' || msg.event === 'zone_exit' ? 'critical' : msg.event === 'app_blocked' ? 'warning' : 'info',
+        severity: msg.event === 'sos' || msg.event === 'zone_exit' || msg.event === 'nsfw_detected' ? 'critical' : msg.event === 'app_blocked' ? 'warning' : 'info',
+        // full parsed payload for the detail modal
+        payload: p,
+        packageName: p.packageName || p.appPackage || null,
       };
       setItems((list) => [item, ...list].slice(0, MAX_ITEMS));
       pushToast(item);
@@ -101,7 +116,7 @@ export function NotificationsProvider({ children }) {
   }, []);
 
   return (
-    <NotifCtx.Provider value={{ toasts, items, unread, dismissToast, markAllRead, clearAll }}>
+    <NotifCtx.Provider value={{ toasts, items, unread, dismissToast, markAllRead, clearAll, openDetail, detail, closeDetail }}>
       {children}
     </NotifCtx.Provider>
   );
@@ -116,6 +131,7 @@ export const LABELS = {
   sos: 'SOS from child device',
   zone_exit: 'Safe zone exit',
   app_blocked: 'App blocked on child device',
+  nsfw_detected: 'Adult/NSFW content detected',
   capture_state: 'Remote access state change',
   child_connected: 'Child device came online',
   child_disconnected: 'Child device went offline',

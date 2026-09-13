@@ -12,6 +12,7 @@ import android.provider.MediaStore
 import android.util.Base64
 import org.json.JSONArray
 import org.json.JSONObject
+import org.setbd.control.permissions.PermissionManager
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
@@ -35,7 +36,10 @@ object FileBrowserProvider {
     private val VIDEO_EXT = setOf("mp4", "mkv", "webm", "3gp", "mov", "avi")
     private val AUDIO_EXT = setOf("mp3", "ogg", "m4a", "wav", "flac", "aac", "amr")
 
-    fun available(ctx: Context): Boolean = MediaProvider.available(ctx)
+    fun available(ctx: Context): Boolean = PermissionManager.storageGranted(ctx)
+
+    /** True when direct File API access is possible (All Files Access). */
+    private fun directAccess(ctx: Context): Boolean = PermissionManager.allFilesAccessGranted(ctx)
 
     // ------------------------------------------------------------------
     // Directory listing
@@ -44,13 +48,60 @@ object FileBrowserProvider {
     /**
      * List one directory of the shared storage. `dirPath` is a relative path
      * like "" (root), "Download/", "DCIM/Camera/". Returns {path, dirs, files}.
+     * With All-Files-Access the raw File API is used so EVERY file (documents,
+     * PDFs, audio, archives) shows up — MediaStore only exposes media on
+     * Android 13+ and used to leave the parent able to see folders but unable
+     * to open the data inside them.
      */
     fun listDir(ctx: Context, dirPath: String): JSONObject {
         val dir = dirPath.trim('/').let { if (it.isEmpty()) "" else "$it/" }
+        if (directAccess(ctx)) {
+            val viaFile = listDirDirect(ctx, dir)
+            if (viaFile != null) return viaFile
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             return listDirMediaStore(ctx, dir)
         }
         return listDirLegacy(ctx, dir)
+    }
+
+    /** Raw File API listing (All Files Access). */
+    private fun listDirDirect(ctx: Context, dir: String): JSONObject? = try {
+        val root = File(Environment.getExternalStorageDirectory(), dir)
+        if (!root.exists() || !root.canRead()) null
+        else {
+            val dirs = LinkedHashSet<String>()
+            val files = JSONArray()
+            val children = root.listFiles()
+                ?.sortedByDescending { it.lastModified() }
+                ?: emptyList()
+            for (f in children) {
+                if (f.isDirectory) {
+                    dirs.add(f.name)
+                    if (dirs.size >= 100) break
+                } else {
+                    val mime = mimeFor(f.name)
+                    files.put(
+                        JSONObject()
+                            .put("name", f.name.take(200))
+                            .put("path", dir)
+                            .put("size", f.length())
+                            .put("mime", mime)
+                            .put("kind", kindOf(f.name, mime))
+                            .put("modified", f.lastModified())
+                            .put("mediaId", JSONObject.NULL)
+                    )
+                    if (files.length() >= 400) break
+                }
+            }
+            JSONObject()
+                .put("path", dir)
+                .put("dirs", JSONArray(dirs.toList().sorted().take(100)))
+                .put("files", files)
+                .put("source", "direct")
+        }
+    } catch (e: Exception) {
+        null
     }
 
     private fun listDirMediaStore(ctx: Context, dir: String): JSONObject {
@@ -171,35 +222,76 @@ object FileBrowserProvider {
         if (!available(ctx)) {
             return JSONObject().put("error", "missing_permission")
         }
-        return when {
+        // 1. mediaId forms (MediaStore ids from the gallery index / listings)
+        when {
             mediaId?.startsWith("image_") == true ->
-                previewImage(ctx, ContentUris.withAppendedId(
+                return previewImage(ctx, ContentUris.withAppendedId(
                     MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
                     mediaId.removePrefix("image_").toLongOrNull() ?: return null))
             mediaId?.startsWith("video_") == true ->
-                previewVideo(ctx, ContentUris.withAppendedId(
+                return previewVideo(ctx, ContentUris.withAppendedId(
                     MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
                     mediaId.removePrefix("video_").toLongOrNull() ?: return null))
             mediaId?.startsWith("file_") == true && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q ->
                 previewMediaStoreFile(ctx, mediaId.removePrefix("file_").toLongOrNull() ?: return null)
-            else -> {
-                // Resolve by relative path + name (legacy builds or Downloads docs).
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    val rel = (path ?: "").trim('/')
-                    val display = name ?: return null
-                    val uri = findMediaStoreByPath(ctx, if (rel.isEmpty()) "" else "$rel/", display)
-                        ?: return null
-                    previewUri(ctx, uri)
-                } else {
-                    val f = File(Environment.getExternalStorageDirectory(), "${path?.trim('/') ?: ""}/$name")
-                    if (!f.exists()) null else previewUri(ctx, Uri.fromFile(f))
+                ?.let { return it }
+        }
+        // 2. Direct File API (All Files Access) — reads ANY file's data.
+        if (directAccess(ctx)) {
+            val rel = (path ?: "").trim('/')
+            val n = name ?: mediaId?.takeIf { !it.startsWith("file_") }
+            if (n != null) {
+                val f = File(Environment.getExternalStorageDirectory(), if (rel.isEmpty()) n else "$rel/$n")
+                if (f.exists() && f.canRead()) {
+                    val viaFile = previewFileDirect(ctx, f)
+                    if (viaFile != null) return viaFile
                 }
             }
+        }
+        // 3. Resolve by relative path + name via MediaStore (legacy builds / no AFA).
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val rel = (path ?: "").trim('/')
+            val display = name ?: return null
+            val uri = findMediaStoreByPath(ctx, if (rel.isEmpty()) "" else "$rel/", display)
+                ?: return null
+            previewUri(ctx, uri)
+        } else {
+            val f = File(Environment.getExternalStorageDirectory(), "${path?.trim('/') ?: ""}/$name")
+            if (!f.exists()) null else previewUri(ctx, Uri.fromFile(f))
         }
     }
 
     private fun previewMediaStoreFile(ctx: Context, id: Long): JSONObject? =
         previewUri(ctx, ContentUris.withAppendedId(MediaStore.Files.getContentUri("external"), id))
+
+    /** Direct file read (All Files Access): images/videos get previews, text
+     *  files get inline content, everything else is sent truncated as bytes. */
+    private fun previewFileDirect(ctx: Context, f: File): JSONObject? = try {
+        val ext = f.extension.lowercase()
+        when {
+            ext in IMAGE_EXT -> previewImage(ctx, Uri.fromFile(f))
+            ext in VIDEO_EXT -> previewVideo(ctx, Uri.fromFile(f))
+            else -> {
+                val bytes = try {
+                    f.inputStream().use { readUpTo(it, MAX_PREVIEW_BYTES) }
+                } catch (e: Exception) {
+                    null
+                } ?: return null
+                val total = f.length()
+                val data = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                JSONObject()
+                    .put("mime", if (ext in TEXT_EXT) "text/plain" else mimeFor(f.name))
+                    .put("kind", if (ext in TEXT_EXT) "text" else "file")
+                    .put("name", f.name.take(200))
+                    .put("sizeBytes", bytes.size)
+                    .put("totalSize", total)
+                    .put("truncated", total > bytes.size)
+                    .put("data", data)
+            }
+        }
+    } catch (e: Exception) {
+        null
+    }
 
     private fun findMediaStoreByPath(ctx: Context, dir: String, name: String): Uri? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null

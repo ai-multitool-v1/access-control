@@ -243,6 +243,13 @@ class RealtimeService : Service(), WsClient.Listener {
             val settings = obj.optJSONObject("settings")
             org.setbd.control.storage.Prefs.locationEnabled =
                 settings?.optBoolean("locationEnabled", false) ?: false
+            // Parent's adult/NSFW configuration rides along too.
+            org.setbd.control.storage.Prefs.nsfwEnabled =
+                settings?.optBoolean("nsfwEnabled", true) ?: true
+            org.setbd.control.storage.Prefs.nsfwBlock =
+                settings?.optBoolean("nsfwBlock", false) ?: false
+            org.setbd.control.storage.Prefs.nsfwDomains =
+                settings?.optString("nsfwDomains", "") ?: ""
             ws?.send(
                 JSONObject()
                     .put("type", "event")

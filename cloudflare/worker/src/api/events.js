@@ -12,6 +12,7 @@ const TYPES = new Set([
   'app_open', 'app_blocked', 'zone_exit', 'sos', 'permission',
   'connect', 'disconnect', 'hardware', 'app_installed', 'app_uninstalled', 'info',
   'notification',  // captured child-device notification (app + text) for the per-app viewer
+  'nsfw_detected', // adult/NSFW site or search flagged on the child device
 ]);
 const SEVERITIES = new Set(['info', 'warning', 'critical']);
 

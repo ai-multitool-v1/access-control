@@ -21,7 +21,7 @@ export async function listDevices(env, parent) {
 export async function getDevice(env, parent, deviceId) {
   const dev = await sbSingle(env, `devices?id=eq.${deviceId}&parent_id=eq.${parent.id}&select=${DEVICE_COLS}`);
   if (!dev) throw new HttpError(404, 'not_found', 'Device not found');
-  const settings = await sbSingle(env, `device_settings?device_id=eq.${deviceId}&select=location_enabled,notes`);
+  const settings = await sbSingle(env, `device_settings?device_id=eq.${deviceId}&select=location_enabled,nsfw_enabled,nsfw_block,nsfw_domains,notes`);
   return json({ ok: true, device: dev, settings: settings || { location_enabled: false } });
 }
 
@@ -51,15 +51,26 @@ export async function deviceSettings(request, env, parent, deviceId, method) {
   if (!dev) throw new HttpError(404, 'not_found', 'Device not found');
 
   if (method === 'GET') {
-    const s = await sbSingle(env, `device_settings?device_id=eq.${deviceId}&select=location_enabled,notes`);
-    return json({ ok: true, settings: s || { location_enabled: false, notes: null } });
+    const s = await sbSingle(env, `device_settings?device_id=eq.${deviceId}&select=location_enabled,nsfw_enabled,nsfw_block,nsfw_domains,notes`);
+    return json({
+      ok: true,
+      settings: s || {
+        location_enabled: false,
+        nsfw_enabled: true,
+        nsfw_block: false,
+        nsfw_domains: '',
+        notes: null,
+      },
+    });
   }
   const body = await readJson(request);
-  const patch = {
-    device_id: deviceId,
-    location_enabled: Boolean(body.locationEnabled),
-    updated_at: new Date().toISOString(),
-  };
+  // Partial-aware patch: absent fields keep their stored value, so the
+  // Location toggle never resets the NSFW configuration (and vice versa).
+  const patch = { device_id: deviceId, updated_at: new Date().toISOString() };
+  if (body.locationEnabled !== undefined) patch.location_enabled = Boolean(body.locationEnabled);
+  if (body.nsfwEnabled !== undefined) patch.nsfw_enabled = Boolean(body.nsfwEnabled);
+  if (body.nsfwBlock !== undefined) patch.nsfw_block = Boolean(body.nsfwBlock);
+  if (body.nsfwDomains !== undefined) patch.nsfw_domains = str(body.nsfwDomains, 4000);
   await sbRest(env, 'device_settings', {
     method: 'POST',
     body: patch,
@@ -68,7 +79,11 @@ export async function deviceSettings(request, env, parent, deviceId, method) {
   await sbInsert(env, 'audit_logs', {
     parent_id: parent.id, device_id: deviceId,
     action: 'device_settings_updated',
-    detail: { locationEnabled: Boolean(body.locationEnabled) },
+    detail: {
+      locationEnabled: Boolean(body.locationEnabled),
+      nsfwEnabled: patch.nsfw_enabled,
+      nsfwBlock: patch.nsfw_block,
+    },
   }, false);
   // Live nudge so the child re-pulls policies + the location gate instantly
   // (otherwise the periodic sync only notices on its next 15-min cycle).
@@ -96,14 +111,20 @@ export async function childPolicies(env, device) {
     policies = res.policies || [];
   } catch { /* empty policy set on failure */ }
   let locationEnabled = false;
+  let nsfw = { nsfwEnabled: true, nsfwBlock: false, nsfwDomains: '' };
   try {
-    const s = await sbSingle(env, `device_settings?device_id=eq.${device.id}&select=location_enabled`);
+    const s = await sbSingle(env, `device_settings?device_id=eq.${device.id}&select=location_enabled,nsfw_enabled,nsfw_block,nsfw_domains`);
     locationEnabled = Boolean(s?.location_enabled);
-  } catch { /* default false */ }
+    nsfw = {
+      nsfwEnabled: s?.nsfw_enabled === undefined ? true : Boolean(s.nsfw_enabled),
+      nsfwBlock: Boolean(s?.nsfw_block),
+      nsfwDomains: s?.nsfw_domains || '',
+    };
+  } catch { /* defaults */ }
   return json({
     ok: true,
     policies,
-    settings: { locationEnabled },
+    settings: { locationEnabled, ...nsfw },
   });
 }
 

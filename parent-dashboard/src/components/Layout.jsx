@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Send, Info, X, ExternalLink, ShieldCheck, Bell, Menu, MoreHorizontal } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth.jsx';
 import { PREVIEW_MODE } from '../lib/preview.js';
 import { NotificationsProvider, useNotifications } from '../hooks/useNotifications.jsx';
 import { fmtTime } from '../components/ui.jsx';
+import NotifDetailModal from './NotifDetailModal.jsx';
 
 const NAV = [
   { to: '/dashboard', label: 'Dashboard', icon: 'M3 12l9-9 9 9M5 10v10h14V10' },
@@ -15,6 +16,7 @@ const NAV = [
   { to: '/location', label: 'Location', icon: 'M12 21s-7-6.1-7-11a7 7 0 1114 0c0 4.9-7 11-7 11zM12 12a2 2 0 100-4 2 2 0 000 4z' },
   { to: '/policies', label: 'Policies', icon: 'M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7l8-4zM9 12l2 2 4-4' },
   { to: '/notifications', label: 'Notifications', icon: 'M18 8a6 6 0 10-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10.3 21a2 2 0 003.4 0' },
+  { to: '/browsing', label: 'Browsing', icon: 'M3 12a9 9 0 1018 0 9 9 0 00-18 0zM3 12h18M12 3a15 15 0 010 18 15 15 0 010-18z' },
   { to: '/telegram', label: 'Telegram', icon: 'M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z' },
   { to: '/profile', label: 'Profile', icon: 'M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 11a4 4 0 100-8 4 4 0 000 8z' },
   { to: '/settings', label: 'Settings', icon: 'M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a7.8 7.8 0 000-6l2-1.2-2-3.4-2 1.2a8 8 0 00-5.4-3L12 .5 8 .6l-.6 2.1a8 8 0 00-5.4 3L0 4.5-2 7.9 0 9a7.8 7.8 0 000 6l-2 1.2 2 3.4 2-1.2a8 8 0 005.4 3L8 23.5l4-.1.6-2.1a8 8 0 005.4-3l2 1.2 2-3.4L19.4 15z' },
@@ -63,16 +65,18 @@ function AboutModal({ onClose }) {
 }
 
 // Live toast stack — bottom-right on desktop, above the nav bar on phones.
+// Clicking a toast opens the FULL parsed notification detail.
 function Toasts() {
-  const { toasts, dismissToast } = useNotifications();
+  const { toasts, dismissToast, openDetail } = useNotifications();
   if (toasts.length === 0) return null;
   return (
     <div className="pointer-events-none fixed bottom-20 right-3 z-[70] flex w-[calc(100vw-1.5rem)] max-w-sm flex-col gap-2 lg:bottom-6 lg:right-6">
       {toasts.map((t) => (
         <div
           key={t.id}
-          className={`pointer-events-auto spatial-card animate-fade-up cursor-pointer p-3 ${t.severity === 'critical' ? 'border-hazard' : ''}`}
-          onClick={() => dismissToast(t.id)}
+          className={`pointer-events-auto spatial-card animate-fade-up cursor-pointer p-3 transition hover:border-neon ${t.severity === 'critical' ? 'border-hazard' : ''}`}
+          onClick={() => { openDetail(t); dismissToast(t.id); }}
+          title="Open parsed details"
         >
           <div className="flex items-start gap-2">
             <span className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${t.severity === 'critical' ? 'bg-hazard' : t.severity === 'warning' ? 'bg-amber-400' : 'bg-neon'}`} />
@@ -92,7 +96,7 @@ function Toasts() {
 }
 
 function BellButton() {
-  const { items, unread, markAllRead, clearAll } = useNotifications();
+  const { items, unread, markAllRead, clearAll, openDetail } = useNotifications();
   const [open, setOpen] = useState(false);
   return (
     <div className="relative">
@@ -130,13 +134,18 @@ function BellButton() {
                 </p>
               ) : (
                 items.map((i) => (
-                  <div key={i.id} className="border-b border-space-700 px-3 py-2.5">
+                  <button
+                    key={i.id}
+                    className="block w-full border-b border-space-700 px-3 py-2.5 text-left transition hover:bg-space-700/60"
+                    onClick={() => { openDetail(i); setOpen(false); }}
+                    title="Open parsed details"
+                  >
                     <div className="flex items-baseline justify-between gap-2">
                       <span className={`truncate font-mono text-[11px] font-bold uppercase ${i.severity === 'critical' ? 'text-hazard' : 'text-slate-200'}`}>{i.title}</span>
                       <span className="shrink-0 font-mono text-[9px] text-slate-600">{fmtTime(i.at)}</span>
                     </div>
                     {i.body && <p className="mt-0.5 line-clamp-2 break-words text-[11px] text-slate-400">{i.body}</p>}
-                  </div>
+                  </button>
                 ))
               )}
             </div>
@@ -185,6 +194,8 @@ function MoreDrawer({ open, onClose, onSignOut }) {
 function LayoutInner() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const { detail, closeDetail } = useNotifications();
   const [aboutOpen, setAboutOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
 
@@ -280,19 +291,22 @@ function LayoutInner() {
         </button>
       </nav>
 
-      {/* Content */}
+      {/* Content — keyed fade transition on every tab open/close */}
       <main className="min-w-0 flex-1 overflow-x-hidden px-4 pb-28 pt-20 lg:ml-60 lg:px-8 lg:pb-10 lg:pt-8">
-        {PREVIEW_MODE && (
-          <div className="mb-4 border-2 border-amber-400/50 bg-amber-400/10 px-4 py-2.5 font-mono text-xs font-bold text-amber-300 shadow-brutal">
-            LOCAL PREVIEW — mock data, no live connection. Start with VITE_PREVIEW_MODE=1 npm run dev.
-          </div>
-        )}
-        <Outlet />
+        <div key={location.pathname} className="animate-fade-in">
+          {PREVIEW_MODE && (
+            <div className="animate-fade-up mb-4 border-2 border-amber-400/50 bg-amber-400/10 px-4 py-2.5 font-mono text-xs font-bold text-amber-300 shadow-brutal">
+              LOCAL PREVIEW — mock data, no live connection. Start with VITE_PREVIEW_MODE=1 npm run dev.
+            </div>
+          )}
+          <Outlet />
+        </div>
       </main>
 
       <MoreDrawer open={moreOpen} onClose={() => setMoreOpen(false)} onSignOut={doSignOut} />
       <Toasts />
       {aboutOpen && <AboutModal onClose={() => setAboutOpen(false)} />}
+      {detail && <NotifDetailModal item={detail} onClose={closeDetail} />}
     </div>
   );
 }

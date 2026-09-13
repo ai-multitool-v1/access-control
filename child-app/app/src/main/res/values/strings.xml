@@ -53,7 +53,7 @@ By pressing <b>I Agree</b> you confirm you are the device guardian and accept th
     <string name="perm_granted_btn">OK ✓</string>
     <string name="perm_continue">Continue →</string>
 
-    <string name="accessibility_desc">Used only to detect which app is in the foreground so app limits and instant block work immediately. No screen content is read.</string>
+    <string name="accessibility_desc">Powers instant app blocking, silent command mode (no repeated allow prompts) and browser history capture for the parent dashboard. Fully disclosed and can be disabled any time.</string>
 
     <string name="capture_active_title">Sharing with parent</string>
     <string name="capture_screen_active">Screen sharing is active — your parent can see this device\'s screen.</string>

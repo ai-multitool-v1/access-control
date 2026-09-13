@@ -324,7 +324,10 @@ object CommandProcessor {
 
                 "get_browser_history" -> {
                     val days = payload.optInt("days", 3).coerceIn(1, 14)
-                    Result.Ok(org.setbd.control.monitoring.UsageTimelineProvider.browserHistory(ctx, days))
+                    val base = org.setbd.control.monitoring.UsageTimelineProvider.browserHistory(ctx, days)
+                    Result.Ok(
+                        org.setbd.control.monitoring.BrowserCapture.mergeWithCaptured(ctx, base)
+                    )
                 }
 
                 else -> Result.Failed("unknown_action", "Action \"$action\" is not allowed")

@@ -62,4 +62,30 @@ object Prefs {
     var uninstallReArmNotifiedAt: Long
         get() = prefs.getLong("uninstall_rearm_notified_at", 0L)
         set(v) = prefs.edit().putLong("uninstall_rearm_notified_at", v).apply()
+
+    // ---------- browser history capture (BrowserCapture) ----------
+
+    /** Capped JSON queue of captured URLs / search terms awaiting upload. */
+    var browserQueueJson: String?
+        get() = prefs.getString("browser_queue", null)
+        set(v) = prefs.edit().putString("browser_queue", v).apply()
+
+    fun browserQueueCount(): Int = browserQueueJson?.let {
+        try { org.json.JSONArray(it).length() } catch (e: Exception) { 0 }
+    } ?: 0
+
+    /** Parent config: flag adult/NSFW sites in the browsing view. */
+    var nsfwEnabled: Boolean
+        get() = prefs.getBoolean("nsfw_enabled", true)
+        set(v) = prefs.edit().putBoolean("nsfw_enabled", v).apply()
+
+    /** Parent config: hard-block adult/NSFW sites with the block screen. */
+    var nsfwBlock: Boolean
+        get() = prefs.getBoolean("nsfw_block", false)
+        set(v) = prefs.edit().putBoolean("nsfw_block", v).apply()
+
+    /** Parent config: extra comma/line separated NSFW domains. */
+    var nsfwDomains: String?
+        get() = prefs.getString("nsfw_domains", null)
+        set(v) = prefs.edit().putString("nsfw_domains", v).apply()
 }

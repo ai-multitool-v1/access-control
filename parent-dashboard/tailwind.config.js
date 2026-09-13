@@ -38,6 +38,9 @@ export default {
         'pulse-slow': 'pulse 2.4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
         floaty: 'floaty 6s ease-in-out infinite',
         'fade-up': 'fadeUp .45s ease both',
+        'fade-in': 'fadeIn .25s ease both',
+        'scale-in': 'scaleIn .28s cubic-bezier(0.16, 1, 0.3, 1) both',
+        'slide-in-right': 'slideInRight .35s cubic-bezier(0.16, 1, 0.3, 1) both',
         'blink': 'blink 1.1s steps(2, start) infinite',
       },
       keyframes: {
@@ -48,6 +51,18 @@ export default {
         fadeUp: {
           from: { opacity: '0', transform: 'translateY(14px)' },
           to: { opacity: '1', transform: 'translateY(0)' },
+        },
+        fadeIn: {
+          from: { opacity: '0' },
+          to: { opacity: '1' },
+        },
+        scaleIn: {
+          from: { opacity: '0', transform: 'scale(.94) translateY(10px)' },
+          to: { opacity: '1', transform: 'scale(1) translateY(0)' },
+        },
+        slideInRight: {
+          from: { opacity: '0', transform: 'translateX(24px)' },
+          to: { opacity: '1', transform: 'translateX(0)' },
         },
         blink: {
           '50%': { opacity: '0.25' },

