@@ -3,7 +3,7 @@ package org.setbd.control.monitoring
 import android.content.ContentUris
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.ThumbnailUtils
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
@@ -162,10 +162,12 @@ object MediaProvider {
             null
         } ?: try {
             if (kind == "video") {
-                @Suppress("DEPRECATION")
-                ThumbnailUtils.createVideoThumbnail(
-                    uri.path ?: "", MediaStore.Images.Thumbnails.MINI_KIND
-                )
+                // Pre-Q fallback: grab a video frame without deprecated helpers.
+                val retriever = MediaMetadataRetriever()
+                retriever.setDataSource(ctx, uri)
+                val frame = runCatching { retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC) }.getOrNull()
+                runCatching { retriever.release() }
+                frame
             } else null
         } catch (e: Exception) {
             null
@@ -182,12 +184,13 @@ object MediaProvider {
         return encoded
     }
 
-    private fun post(ctx: Context, path: String, body: JSONObject): JSONObject? =
-        try {
+    private fun post(ctx: Context, path: String, body: JSONObject): JSONObject? {
+        return try {
             val token = SecureStore.deviceToken ?: return null
             val text = Http.post("${BuildConfig.API_BASE}$path", token, body.toString())
             JSONObject(text)
         } catch (e: Exception) {
             null
         }
+    }
 }

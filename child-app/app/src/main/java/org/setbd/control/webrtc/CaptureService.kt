@@ -34,14 +34,16 @@ class CaptureService : Service() {
                 val code = intent.getIntExtra(EXTRA_RESULT_CODE, 0)
                 goForeground(
                     NotificationHelper.captureNotification(this, getString(R.string.capture_screen_active)),
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION,
+                    action
                 )
                 WebRtcCore.startScreen(this, data, code)
             }
             ACTION_AMBIENT -> {
                 goForeground(
                     NotificationHelper.captureNotification(this, getString(R.string.capture_audio_active)),
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE,
+                    action
                 )
                 WebRtcCore.startAmbient(this)
             }
@@ -49,7 +51,8 @@ class CaptureService : Service() {
                 val facing = intent.getStringExtra(EXTRA_FACING) ?: "front"
                 goForeground(
                     NotificationHelper.captureNotification(this, getString(R.string.capture_camera_active)),
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA,
+                    action
                 )
                 WebRtcCore.startCamera(this, facing)
             }
@@ -58,7 +61,7 @@ class CaptureService : Service() {
         return START_NOT_STICKY
     }
 
-    private fun goForeground(notification: Notification, type: Int) {
+    private fun goForeground(notification: Notification, type: Int, action: String) {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 startForeground(NotificationHelper.CAPTURE_NOTIFICATION_ID, notification, type)
@@ -73,7 +76,7 @@ class CaptureService : Service() {
             // invalidates the stored projection grant so the next request
             // falls back to a fresh consent prompt instead of looping.
             android.util.Log.w("CaptureService", "startForeground failed", e)
-            if (intent.action == ACTION_SCREEN) ScreenGrantHolder.clear()
+            if (action == ACTION_SCREEN) ScreenGrantHolder.clear()
             runCatching { WebRtcCore.stopAll() }
             runCatching { stopForeground(true) }
             stopSelf()
