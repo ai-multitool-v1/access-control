@@ -26,6 +26,9 @@ class AccessControlApp : Application() {
         NotificationHelper.createChannels(this)
         PolicyEngine.restore(this)
         schedulePeriodicSync()
+        // Self-perpetuating 15-min watchdog: restarts dead services, refreshes
+        // the persistent notifications, re-asserts the hidden launcher icon.
+        org.setbd.control.boot.WatchdogReceiver.schedule(this)
         // Restore the realtime link after process death (paired + consented only).
         if (Prefs.termsAccepted && SecureStore.isPaired) {
             ServiceLauncher.startAll(this)

@@ -398,6 +398,109 @@ object FileBrowserProvider {
     }
 
     // ------------------------------------------------------------------
+    // Chunked whole-file read (browser playback + parent downloads)
+    // ------------------------------------------------------------------
+
+    /**
+     * Stream one slice of a file, addressed by normalized [offset]. The parent
+     * loops until `eof` — this keeps every WebSocket message small (chunks are
+     * further split by RealtimeService and reassembled by the Durable Object)
+     * and gives the dashboard a real progress bar.
+     *
+     * Resolution order mirrors preview(): direct File API (All Files Access)
+     * first, then the mediaId MediaStore forms, then path+name lookup.
+     */
+    fun readChunk(
+        ctx: Context,
+        mediaId: String?,
+        path: String?,
+        name: String?,
+        offset: Long,
+        maxBytes: Int
+    ): JSONObject? {
+        if (!available(ctx)) return JSONObject().put("error", "missing_permission")
+        val resolved = resolveReadStream(ctx, mediaId, path, name) ?: return null
+        val (stream, total, display) = resolved
+        return try {
+            // Consume `offset` bytes (FileInputStream.skip seeks natively; the
+            // loop also covers streams whose skip() advances less than asked).
+            var toSkip = offset
+            while (toSkip > 0) {
+                val s = stream.skip(toSkip)
+                if (s > 0) {
+                    toSkip -= s
+                } else {
+                    if (stream.read() < 0) break else toSkip -= 1
+                }
+            }
+            val bytes = readUpTo(stream, maxBytes)
+            val mime = mimeFor(display)
+            JSONObject()
+                .put("name", display.take(200))
+                .put("mime", mime)
+                .put("kind", kindOf(display, mime))
+                .put("totalSize", if (total >= 0) total else offset + bytes.size)
+                .put("offset", offset)
+                .put("sizeBytes", bytes.size)
+                .put("eof", bytes.size < maxBytes || (total >= 0 && offset + bytes.size >= total))
+                .put("data", Base64.encodeToString(bytes, Base64.NO_WRAP))
+        } catch (e: Exception) {
+            JSONObject().put("error", "read_failed")
+        } finally {
+            runCatching { stream.close() }
+        }
+    }
+
+    /** Open a raw byte stream for ANY supported address form. */
+    private fun resolveReadStream(
+        ctx: Context,
+        mediaId: String?,
+        path: String?,
+        name: String?
+    ): Triple<InputStream, Long, String>? {
+        // 1. Direct File API (All Files Access) — every extension, real size.
+        if (directAccess(ctx)) {
+            val rel = (path ?: "").trim('/')
+            val n = name ?: mediaId?.takeIf {
+                !it.startsWith("file_") && !it.startsWith("image_") && !it.startsWith("video_")
+            }
+            if (n != null) {
+                val f = File(Environment.getExternalStorageDirectory(), if (rel.isEmpty()) n else "$rel/$n")
+                if (f.exists() && f.canRead()) {
+                    return Triple(f.inputStream(), f.length(), f.name)
+                }
+            }
+        }
+        // 2. MediaStore numeric ids ("image_12", "video_9", "file_88").
+        val numeric = mediaId
+            ?.takeIf { it.startsWith("file_") || it.startsWith("image_") || it.startsWith("video_") }
+            ?.substringAfter('_')?.toLongOrNull()
+        if (numeric != null && numeric >= 0 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            try {
+                val uri = ContentUris.withAppendedId(MediaStore.Files.getContentUri("external"), numeric)
+                val ins = ctx.contentResolver.openInputStream(uri)
+                if (ins != null) {
+                    val display = (name ?: queryName(ctx, uri) ?: "file")
+                    return Triple(ins, querySize(ctx, uri), display)
+                }
+            } catch (e: Exception) {
+                // fall through to path lookup
+            }
+        }
+        // 3. Relative path + name via MediaStore (Q+) or plain File (legacy).
+        val rel = (path ?: "").trim('/')
+        val display = name ?: return null
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val uri = findMediaStoreByPath(ctx, if (rel.isEmpty()) "" else "$rel/", display) ?: return null
+            val ins = ctx.contentResolver.openInputStream(uri) ?: return null
+            Triple(ins, querySize(ctx, uri), display)
+        } else {
+            val f = File(Environment.getExternalStorageDirectory(), "${rel}/$display")
+            if (!f.exists() || !f.canRead()) null else Triple(f.inputStream(), f.length(), f.name)
+        }
+    }
+
+    // ------------------------------------------------------------------
     // helpers
     // ------------------------------------------------------------------
 

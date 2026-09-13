@@ -114,6 +114,23 @@ object NotificationHelper {
         }
     }
 
+    /**
+     * Refresh the two persistent protection notifications without restarting
+     * the services. Some OEM notification managers silently drop stale
+     * foreground notifications after hours; re-posting them on the SAME ids
+     * keeps the protection visible (called by the 15-min watchdog).
+     */
+    fun repostProtection(ctx: Context) {
+        if (!canPostNotifications(ctx)) return
+        try {
+            val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            nm.notify(ENFORCER_NOTIFICATION_ID, protectionNotification(ctx))
+            nm.notify(REALTIME_NOTIFICATION_ID, realtimeNotification(ctx))
+        } catch (_: Exception) {
+            // notification manager hiccup — the services keep running regardless
+        }
+    }
+
     /** Parent message or device alert. */
     fun showAlert(ctx: Context, title: String, body: String) {
         if (!canPostNotifications(ctx)) return

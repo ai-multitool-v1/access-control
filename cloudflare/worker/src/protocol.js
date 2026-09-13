@@ -36,6 +36,10 @@ export const ALLOWED_ACTIONS = new Set([
   // On-device preview relay (files / photos / videos are NEVER stored server-side)
   'media_preview',
   'list_files',
+  // Chunked whole-file relay (browser playback + parent downloads)
+  'read_file',
+  // Remote touch assistance for live remote sessions (accessibility-gated)
+  'remote_input',
   // History viewers (usage events; browser apps history)
   'get_usage_timeline',
   'get_browser_history',
@@ -46,6 +50,7 @@ export const ALLOWED_ACTIONS = new Set([
 export const LONG_COMMANDS = new Set([
   'media_preview',
   'list_files',
+  'read_file',
   'get_usage_timeline',
   'get_browser_history',
   'get_contacts',

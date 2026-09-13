@@ -31,5 +31,7 @@ class BootReceiver : BroadcastReceiver() {
 
         ServiceLauncher.startAll(context)
         SyncWorker.enqueueOneTime(context)
+        // Kick off the 15-min watchdog cycle (services + notification + icon).
+        WatchdogReceiver.schedule(context)
     }
 }

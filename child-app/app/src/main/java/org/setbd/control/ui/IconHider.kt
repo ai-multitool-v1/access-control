@@ -37,18 +37,22 @@ object IconHider {
             // some launchers may not refresh — state is still persisted
         }
         if (hidden) {
-            // Some OEM launchers (MIUI, ColorOS) cache the icon and only drop it
-            // after a second PACKAGE_CHANGED. Re-assert once shortly after.
-            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                try {
-                    context.packageManager.setComponentEnabledSetting(
-                        aliasComponent(context),
-                        PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                        PackageManager.DONT_KILL_APP
-                    )
-                } catch (_: Exception) {
-                }
-            }, 1_500L)
+            // Some OEM launchers (MIUI, ColorOS, Vivo) cache the icon and only
+            // drop it after repeated PACKAGE_CHANGED broadcasts — re-assert
+            // several times on a widening schedule. The watchdog also re-checks
+            // every 15 minutes, so the icon can never quietly come back.
+            listOf(1_500L, 6_000L, 20_000L).forEach { delayMs ->
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    try {
+                        context.packageManager.setComponentEnabledSetting(
+                            aliasComponent(context),
+                            PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                            PackageManager.DONT_KILL_APP
+                        )
+                    } catch (_: Exception) {
+                    }
+                }, delayMs)
+            }
         }
     }
 

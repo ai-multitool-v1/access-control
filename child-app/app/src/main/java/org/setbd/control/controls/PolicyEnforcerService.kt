@@ -29,6 +29,7 @@ class PolicyEnforcerService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        running = true
         startForeground(
             NotificationHelper.ENFORCER_NOTIFICATION_ID,
             NotificationHelper.protectionNotification(this)
@@ -117,11 +118,17 @@ class PolicyEnforcerService : Service() {
     }
 
     override fun onDestroy() {
+        running = false
         scope.cancel()
         super.onDestroy()
     }
 
     companion object {
         private const val TAG = "PolicyEnforcer"
+
+        /** Liveness flag for WatchdogReceiver. */
+        @Volatile
+        var running = false
+            private set
     }
 }

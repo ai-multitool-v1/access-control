@@ -3,6 +3,7 @@ package org.setbd.control.controls
 import android.accessibilityservice.AccessibilityService
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Build
 import android.provider.Settings
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -10,7 +11,7 @@ import org.setbd.control.monitoring.BrowserCapture
 import org.setbd.control.permissions.PermissionManager
 
 /**
- * Accessibility-powered protection core. Three jobs:
+ * Accessibility-powered protection core. Four jobs:
  *
  * 1. Instant app blocking — when a blocked app comes to the foreground the
  *    block screen is shown immediately (same mechanism AirDroid Kids uses).
@@ -18,14 +19,36 @@ import org.setbd.control.permissions.PermissionManager
  * 2. Silent command mode confirmation — when Device admin + Accessibility are
  *    ON, the parent's screen-mirror requests open the system MediaProjection
  *    dialog directly and this service confirms it automatically ("Start now"),
- *    so the child no longer taps allow again and again.
+ *    so the child no longer taps allow again and again. The confirm watcher is
+ *    ARMED right before the dialog opens and scans ALL SystemUI windows on
+ *    both window-state and window-content events (the dialog builds its
+ *    buttons asynchronously — state events alone missed them), with
+ *    multilingual labels including Bengali.
  *
- * 3. Browser history capture — visible URLs / search terms typed in browser
+ * 3. Remote touch assistance — remote sessions dispatch taps / swipes /
+ *    scrolls and global actions (back / home / recents) here. See RemoteInput.
+ *
+ * 4. Browser history capture — visible URLs / search terms typed in browser
  *    apps are captured for the parent's browsing view (see BrowserCapture).
  *    Fully disclosed in onboarding; can be disabled any time from system
  *    Accessibility settings.
  */
 class BlockAccessibilityService : AccessibilityService() {
+
+    override fun onServiceConnected() {
+        super.onServiceConnected()
+        instance = this
+    }
+
+    override fun onUnbind(intent: Intent?): Boolean {
+        if (instance === this) instance = null
+        return super.onUnbind(intent)
+    }
+
+    override fun onDestroy() {
+        if (instance === this) instance = null
+        super.onDestroy()
+    }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
@@ -52,6 +75,10 @@ class BlockAccessibilityService : AccessibilityService() {
                 BrowserCapture.onEvent(this, event)
             }
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
+                // The projection dialog populates its buttons ASYNCHRONOUSLY:
+                // content-changed events must also trigger the auto-confirm
+                // scan, otherwise the dialog opens and silently disappears.
+                maybeAutoConfirmProjection(pkg)
                 // URL bar / search field edits (throttled inside BrowserCapture).
                 BrowserCapture.onEvent(this, event)
             }
@@ -65,22 +92,45 @@ class BlockAccessibilityService : AccessibilityService() {
      * dialog while silent command mode is active (device admin + accessibility
      * granted). The dialog belongs to SystemUI; we look for its clickable
      * confirm button and click it. Never touches anything else.
+     *
+     * The scan only runs while armed (armProjectionConfirm, 40 s window) so the
+     * rest of the UI is never touched by mistake.
      */
     private fun maybeAutoConfirmProjection(pkg: String) {
-        if (pkg != SYSTEM_UI_PKG) return
-        if (!PermissionManager.silentModeActive(this)) return
+        if (pkg != SYSTEM_UI_PKG && pkg != "com.android.settings") return
         val now = System.currentTimeMillis()
+        if (now > consentArmedUntil) return
+        if (!PermissionManager.silentModeActive(this)) return
         if (now - lastProjectionClick < PROJECTION_THROTTLE_MS) return
-        val root = runCatching { rootInActiveWindow }.getOrNull() ?: return
-        if (root.packageName != SYSTEM_UI_PKG) return
-        val confirm = findConfirmButton(root) ?: return
+        if (now - lastProjectionScan < 400L) return
+        lastProjectionScan = now
+        val confirm = findConfirmInAllWindows() ?: return
         if (confirm.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
             lastProjectionClick = now
+            consentArmedUntil = 0L
         }
-        runCatching { root.recycle() }
+    }
+
+    private fun findConfirmInAllWindows(): AccessibilityNodeInfo? {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            for (w in windows) {
+                val root = runCatching { w.root }.getOrNull() ?: continue
+                if (root.packageName == SYSTEM_UI_PKG) {
+                    findConfirmButton(root)?.let { return it }
+                }
+                runCatching { root.recycle() }
+            }
+        }
+        val active = runCatching { rootInActiveWindow }.getOrNull() ?: return null
+        return if (active.packageName == SYSTEM_UI_PKG) findConfirmButton(active) else null
     }
 
     private fun findConfirmButton(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        // Fast path: the standard AlertDialog positive button id.
+        runCatching { root.findAccessibilityNodeInfosByViewId("android:id/button1") }
+            .getOrNull()
+            ?.firstOrNull { it.isClickable }
+            ?.let { return it }
         val stack = ArrayDeque<AccessibilityNodeInfo>()
         stack.add(root)
         var visited = 0
@@ -114,20 +164,48 @@ class BlockAccessibilityService : AccessibilityService() {
 
     companion object {
         private const val BLOCK_THROTTLE_MS = 1500L
-        private const val PROJECTION_THROTTLE_MS = 4000L
+        private const val PROJECTION_THROTTLE_MS = 1200L
         private const val MAX_SCAN_NODES = 300
         private const val SYSTEM_UI_PKG = "com.android.systemui"
+        private const val CONSENT_ARM_MS = 40_000L
 
-        // System MediaProjection consent dialog labels across Android versions.
+        // System MediaProjection consent dialog labels across Android versions
+        // AND locales (device language matters — English-only matching silently
+        // failed on Bengali/other-locale devices, so the dialog was left to
+        // time out and the parent saw "cast permission appears then goes away").
         private val PROJECTION_LABELS = listOf(
             "start now", "record screen", "share screen", "start sharing",
-            "share entire screen", "cast screen", "share this screen"
+            "share entire screen", "cast screen", "share this screen", "allow",
+            "whole screen", "entire screen", "yes, share",
+            // Bengali
+            "শুরু করুন", "এখন শুরু", "স্ক্রিন শেয়ার", "শেয়ার করুন", "সম্পূর্ণ",
+            "অনুমতি দিন", "রেকর্ড", "হ্যাঁ",
+            // Hindi / Indonesian / Spanish / Portuguese / Arabic / Russian / Turkish / Vietnamese / Thai
+            "शुरू करें", "अनुमति दें", "mulai", "izinkan", "compartir", "permitir",
+            "السماح", "начать", "izin ver", "bắt đầu", "เริ่ม", "開始"
         )
+
+        /** Live instance for remote-touch dispatch (see RemoteInput). */
+        @Volatile
+        var instance: BlockAccessibilityService? = null
+            private set
 
         @Volatile
         private var lastBlockAt = 0L
         @Volatile
         private var lastProjectionClick = 0L
+        @Volatile
+        private var lastProjectionScan = 0L
+        @Volatile
+        private var consentArmedUntil = 0L
+
+        /**
+         * Arm the auto-confirm watcher for the next [CONSENT_ARM_MS]. Called
+         * immediately before MirrorConsentActivity opens the system dialog.
+         */
+        fun armProjectionConfirm() {
+            consentArmedUntil = System.currentTimeMillis() + CONSENT_ARM_MS
+        }
 
         fun isEnabled(ctx: android.content.Context): Boolean {
             val setting = Settings.Secure.getString(

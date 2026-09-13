@@ -185,12 +185,26 @@ object WebRtcCore {
                     screenCapturer = capturer
                     val source = f.createVideoSource(true) // screencast
                     videoSource = source
+                    // Adaptive quality: let the source scale down / drop frames
+                    // when bandwidth is tight (on top of WebRTC's own congestion
+                    // control, which already adapts the bitrate continuously).
+                    runCatching { source.adaptOutputFormat(720, 1280, 12) }
                     helper = SurfaceTextureHelper.create("ac-screen", eglBase!!.eglBaseContext)
                     capturer.initialize(helper, context, source.capturerObserver)
                     capturer.startCapture(720, 1280, 15)
                     val track = f.createVideoTrack("screen0", source)
                     videoTrack = track
                     connection.addTrack(track, listOf("ac"))
+                    // Cap the encoder so mobile uplinks stay usable; WebRTC
+                    // still lowers the bitrate further when the network dips.
+                    runCatching {
+                        val sender = connection.senders?.firstOrNull()
+                        val params = sender?.parameters
+                        if (params != null && params.encodings.isNotEmpty()) {
+                            params.encodings[0].maxBitrateBps = 1_200_000
+                            sender.parameters = params
+                        }
+                    }
                 }
 
                 KIND_AMBIENT -> {

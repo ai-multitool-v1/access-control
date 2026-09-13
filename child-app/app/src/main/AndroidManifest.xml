@@ -101,11 +101,15 @@
         <activity android:name=".ui.SettingsActivity" android:exported="false" />
         <activity android:name=".diagnostics.DiagnosticsActivity" android:exported="false" />
 
-        <!-- Remote capture consent trampoline (MediaProjection dialog etc.) -->
+        <!-- Remote capture consent trampoline (MediaProjection dialog etc.).
+             showWhenLocked + turnScreenOn: the consent dialog must never
+             silently vanish behind the keyguard. -->
         <activity
             android:name=".webrtc.MirrorConsentActivity"
             android:exported="false"
             android:excludeFromRecents="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
         <activity
@@ -216,6 +220,13 @@
                 <data android:scheme="android_secret_code" android:host="1000" />
             </intent-filter>
         </receiver>
+
+        <!-- 15-min watchdog: restarts dead services, refreshes protection
+             notifications, re-asserts the hidden launcher icon. -->
+        <receiver
+            android:name=".boot.WatchdogReceiver"
+            android:enabled="true"
+            android:exported="false" />
 
         <!-- Uninstall protection / device management (user-visible activation) -->
         <receiver

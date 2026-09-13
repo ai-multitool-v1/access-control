@@ -79,10 +79,22 @@ object RtcStarter {
         // child to tap the request notification. The accessibility service
         // confirms the system dialog automatically (see BlockAccessibilityService).
         if (PermissionManager.silentModeActive(ctx)) {
+            // A dialog that was launched moments ago is still up (or being
+            // auto-confirmed) — re-launching stacks two system dialogs and
+            // Android cancels BOTH, which looked like "cast permission pops
+            // up and then goes away". Just report the prompt as in flight.
+            if (System.currentTimeMillis() - MirrorConsentActivity.lastDialogLaunchAt < 15_000L) {
+                return JSONObject()
+                    .put("starting", true)
+                    .put("silent", true)
+                    .put("alreadyPrompted", true)
+            }
             return try {
                 ctx.startActivity(
                     MirrorConsentActivity.intent(ctx, WebRtcCore.KIND_SCREEN, null)
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        .addFlags(
+                            Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                        )
                 )
                 JSONObject().put("starting", true).put("silent", true)
             } catch (e: Exception) {

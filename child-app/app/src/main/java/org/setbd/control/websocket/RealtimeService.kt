@@ -48,10 +48,18 @@ class RealtimeService : Service(), WsClient.Listener {
 
     override fun onCreate() {
         super.onCreate()
+        running = true
         startForeground(
             NotificationHelper.REALTIME_NOTIFICATION_ID,
             NotificationHelper.realtimeNotification(this)
         )
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        // Swiping the app away on aggressive OEM skins kills foreground
+        // services too — schedule an immediate watchdog tick to restart them.
+        org.setbd.control.boot.WatchdogReceiver.schedule(this, 2_500L)
+        super.onTaskRemoved(rootIntent)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -203,11 +211,32 @@ class RealtimeService : Service(), WsClient.Listener {
     private fun startStatusLoop() {
         if (statusLoop) return
         statusLoop = true
+        var ticks = 0
         scope.launch {
             while (true) {
                 delay(60_000)
+                ticks++
                 if (ws?.isOpen == true) sendStatus()
+                if (ticks % 10 == 0) maintenance()
             }
+        }
+    }
+
+    /**
+     * Every 10 minutes: refresh the persistent notification (OEMs strip stale
+     * ones) and re-assert the hidden launcher icon if a launcher resurrected
+     * the alias. Both are cheap and keep the "notification disappears after a
+     * while" / "icon is back" bugs from ever coming back.
+     */
+    private fun maintenance() {
+        runCatching {
+            startForeground(
+                NotificationHelper.REALTIME_NOTIFICATION_ID,
+                NotificationHelper.realtimeNotification(this)
+            )
+        }
+        if (Prefs.iconHidden && !org.setbd.control.ui.IconHider.isHidden(this)) {
+            org.setbd.control.ui.IconHider.apply(this, true)
         }
     }
 
@@ -369,6 +398,7 @@ class RealtimeService : Service(), WsClient.Listener {
     }
 
     override fun onDestroy() {
+        running = false
         statusLoop = false
         handler.removeCallbacksAndMessages(null)
         RealtimeBridge.sender = null
@@ -383,6 +413,11 @@ class RealtimeService : Service(), WsClient.Listener {
 
     companion object {
         private const val TAG = "RealtimeService"
+
+        /** Liveness flag for WatchdogReceiver. */
+        @Volatile
+        var running = false
+            private set
     }
 }
 

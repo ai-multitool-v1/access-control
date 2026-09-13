@@ -2,6 +2,7 @@ package org.setbd.control.websocket
 
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import org.json.JSONArray
 import org.json.JSONObject
 import org.setbd.control.BuildConfig
@@ -66,6 +67,10 @@ object CommandProcessor {
         // On-device preview relay (nothing stored server-side)
         "media_preview",
         "list_files",
+        // Chunked whole-file relay for browser playback + downloads
+        "read_file",
+        // Remote touch assistance for live sessions (accessibility-gated)
+        "remote_input",
         // History viewers
         "get_usage_timeline",
         "get_browser_history"
@@ -314,6 +319,42 @@ object CommandProcessor {
                                 payload.optString("path", "")
                             )
                         )
+                    }
+                }
+
+                "read_file" -> {
+                    if (!org.setbd.control.monitoring.FileBrowserProvider.available(ctx)) {
+                        Result.Failed("missing_permission", "Files permission is not granted on the child device")
+                    } else {
+                        val chunk = org.setbd.control.monitoring.FileBrowserProvider.readChunk(
+                            ctx,
+                            payload.optString("mediaId").take(60).ifBlank { null },
+                            payload.optString("path").take(200).ifBlank { null },
+                            payload.optString("name").take(200).ifBlank { null },
+                            payload.optLong("offset", 0L).coerceAtLeast(0L),
+                            payload.optInt("maxBytes", 384 * 1024).coerceIn(64 * 1024, 512 * 1024)
+                        )
+                        if (chunk == null) Result.Failed("not_found", "File could not be read")
+                        else if (chunk.has("error")) {
+                            Result.Failed(chunk.optString("error"), "File read failed on the child device")
+                        } else Result.Ok(chunk)
+                    }
+                }
+
+                "remote_input" -> {
+                    val svc = org.setbd.control.controls.BlockAccessibilityService.instance
+                    if (svc == null) {
+                        Result.Failed(
+                            "missing_permission",
+                            "Remote touch needs Accessibility enabled on the child device"
+                        )
+                    } else if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+                        Result.Failed(
+                            "unsupported",
+                            "This Android version cannot inject remote touches"
+                        )
+                    } else {
+                        Result.Ok(org.setbd.control.controls.RemoteInput.execute(svc, payload))
                     }
                 }
 

@@ -1,22 +1,18 @@
-import { useEffect, useState } from 'react';
-import { RefreshCw, Image as ImageIcon, Film, Folder, File as FileIcon, ChevronUp, X, Download, Loader2 } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { RefreshCw, Image as ImageIcon, Film, Folder, File as FileIcon, ChevronUp, X, Download, Loader2, CheckSquare, Square, Play, Package, Music } from 'lucide-react';
 import { api } from '../../services/api.js';
 import { command } from '../../services/ws.js';
+import { transferFile, downloadBlob, makeZip, fmtBytes } from '../../lib/transfer.js';
 import { SpatialCard, fmtTime, EmptyIcon } from '../ui.jsx';
 
 /**
  * Photos, videos & files lookup: the parent browses a thumbnail index of the
  * child's gallery plus an on-device file browser. NOTHING is stored in the
- * database beyond the tiny index — opening an item streams a downscaled
- * preview straight through the realtime channel and drops it.
+ * database beyond the tiny index — opening an item streams it straight
+ * through the realtime channel and drops it. Videos, audio, PDFs and every
+ * other format can now be PLAYED / opened in the browser and downloaded
+ * (single file, or mark several → one ZIP).
  */
-
-function b64ToBytes(b64) {
-  const bin = atob(b64);
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  return bytes;
-}
 
 function b64ToDataUri(b64, mime) {
   return `data:${mime};base64,${b64}`;
@@ -24,19 +20,104 @@ function b64ToDataUri(b64, mime) {
 
 function b64ToText(b64) {
   try {
-    return new TextDecoder('utf-8', { fatal: false }).decode(b64ToBytes(b64));
+    return new TextDecoder('utf-8', { fatal: false }).decode(
+      Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))
+    );
   } catch {
     return '(could not decode as text)';
   }
 }
 
+// One whole-file transfer with progress — shared by playback + downloads.
+function useTransfer() {
+  const [busy, setBusy] = useState(false);
+  const [prog, setProg] = useState(null); // {loaded, total}
+  const token = useRef({ aborted: false });
+  const run = async (params, onDone) => {
+    setBusy(true);
+    setProg({ loaded: 0, total: undefined });
+    token.current = { aborted: false };
+    try {
+      const out = await transferFile(params, {
+        onProgress: setProg,
+        token: token.current,
+      });
+      onDone && onDone(out);
+      return out;
+    } finally {
+      setBusy(false);
+      setProg(null);
+    }
+  };
+  const cancel = () => { token.current.aborted = true; };
+  return { busy, prog, run, cancel };
+}
+
+function ProgressLine({ prog }) {
+  if (!prog) return null;
+  const pct = prog.total ? Math.min(100, Math.round((prog.loaded / prog.total) * 100)) : null;
+  return (
+    <div className="my-2 border-2 border-space-600 bg-space-700/60 p-2">
+      <div className="mb-1 flex justify-between font-mono text-[10px] uppercase tracking-wider text-slate-400">
+        <span>Streaming from device…</span>
+        <span>{pct != null ? `${pct}%` : fmtBytes(prog.loaded)}</span>
+      </div>
+      <div className="h-1.5 w-full bg-space-600">
+        {pct != null && <div className="h-full bg-neon transition-all duration-300" style={{ width: `${pct}%` }} />}
+      </div>
+    </div>
+  );
+}
+
 function PreviewModal({ item, onClose }) {
-  if (!item) return null;
   const { meta, data } = item;
+  const [player, setPlayer] = useState(null); // {url, kind}
+  const [playerErr, setPlayerErr] = useState('');
+  const xfer = useTransfer();
+
+  useEffect(() => () => { if (player?.url) URL.revokeObjectURL(player.url); }, [player]);
+
   const isImage = (meta.mime || '').startsWith('image/');
   const isText = (meta.mime || '').startsWith('text/') && meta.kind !== 'pdf';
+  const isVideo = meta.kind === 'video';
+  const isAudio = meta.kind === 'audio';
+  const isPdf = meta.kind === 'pdf' || meta.mime === 'application/pdf';
 
-  const download = () => {
+  const transferParams = meta.readParams || {};
+
+  const playInBrowser = async () => {
+    setPlayerErr('');
+    try {
+      const out = await xfer.run(transferParams);
+      if (player?.url) URL.revokeObjectURL(player.url);
+      setPlayer({ url: URL.createObjectURL(out.blob), kind: isAudio ? 'audio' : 'video' });
+    } catch (e) {
+      setPlayerErr(e.message);
+    }
+  };
+
+  const openInBrowser = async () => {
+    setPlayerErr('');
+    try {
+      const out = await xfer.run(transferParams);
+      if (player?.url) URL.revokeObjectURL(player.url);
+      setPlayer({ url: URL.createObjectURL(out.blob), kind: 'pdf' });
+    } catch (e) {
+      setPlayerErr(e.message);
+    }
+  };
+
+  const downloadFull = async () => {
+    setPlayerErr('');
+    try {
+      const res = await xfer.run(transferParams);
+      downloadBlob(res.blob, res.name || meta.name || 'file');
+    } catch (e) {
+      setPlayerErr(e.message);
+    }
+  };
+
+  const downloadPreviewCopy = () => {
     const a = document.createElement('a');
     a.href = b64ToDataUri(data, meta.mime === 'video/poster' ? 'image/jpeg' : meta.mime);
     a.download = meta.name || 'preview';
@@ -45,35 +126,90 @@ function PreviewModal({ item, onClose }) {
     a.remove();
   };
 
+  const videoPlaying = player && player.kind === 'video';
+  const audioPlaying = player && player.kind === 'audio';
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-3 sm:p-4" onClick={onClose}>
-      <div className="spatial-card flex max-h-[90vh] w-full max-w-2xl flex-col p-4 sm:p-5" onClick={(e) => e.stopPropagation()}>
+      <div className="spatial-card animate-scale-in flex max-h-[92vh] w-full max-w-2xl flex-col p-4 sm:p-5" onClick={(e) => e.stopPropagation()}>
         <div className="mb-3 flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h3 className="truncate font-mono text-sm font-black uppercase tracking-widest text-white">{meta.name || 'Preview'}</h3>
             <p className="font-mono text-[10px] uppercase tracking-wider text-slate-500">
-              {meta.mime} {meta.totalSize ? `· ${Math.round(meta.totalSize / 1024)} KB` : meta.sizeBytes ? `· ${Math.round(meta.sizeBytes / 1024)} KB` : ''}
+              {meta.mime} {meta.totalSize ? `· ${fmtBytes(meta.totalSize)}` : meta.sizeBytes ? `· ${fmtBytes(meta.sizeBytes)}` : ''}
               {meta.durationMs > 0 ? ` · ${Math.round(meta.durationMs / 1000)}s` : ''}
-              {meta.truncated ? ' · truncated (first 512 KB)' : ''}
+              {meta.truncated ? ' · preview truncated' : ''}
               {' · streamed live, not stored'}
             </p>
           </div>
-          <button onClick={onClose} className="border-2 border-space-600 p-1 text-slate-400 hover:border-hazard hover:text-hazard">
+          <button onClick={onClose} className="border-2 border-space-600 p-1 text-slate-400 transition hover:border-hazard hover:text-hazard">
             <X className="h-4 w-4" />
           </button>
         </div>
 
         <div className="min-h-0 flex-1 overflow-auto border-2 border-space-600 bg-black/60">
-          {isImage ? (
+          {videoPlaying || audioPlaying ? (
+            videoPlaying ? (
+              <video
+                src={player.url}
+                controls
+                autoPlay
+                playsInline
+                className="mx-auto max-h-[55vh] w-auto max-w-full"
+                onError={() => setPlayerErr("This format can't be played by the browser — download it instead.")}
+              />
+            ) : (
+              <div className="p-4">
+                <audio
+                  src={player.url}
+                  controls
+                  autoPlay
+                  className="w-full"
+                  onError={() => setPlayerErr("This format can't be played by the browser — download it instead.")}
+                />
+              </div>
+            )
+          ) : player && player.kind === 'pdf' ? (
+            <iframe src={player.url} title={meta.name} className="h-[60vh] w-full bg-white" />
+          ) : isImage ? (
             <img src={b64ToDataUri(data, 'image/jpeg')} alt={meta.name} className="mx-auto max-h-[60vh] w-auto max-w-full object-contain" />
           ) : isText ? (
             <pre className="p-3 font-mono text-[11px] leading-relaxed break-all whitespace-pre-wrap text-slate-300">{b64ToText(data)}</pre>
-          ) : meta.kind === 'video' ? (
-            <div className="flex flex-col items-center gap-2 p-4">
-              <img src={b64ToDataUri(data, 'image/jpeg')} alt={meta.name} className="max-h-[50vh] w-auto max-w-full object-contain" />
-              <p className="font-mono text-[10px] uppercase tracking-wider text-slate-500">
-                Video preview = first frame. Full video files never leave the child device.
-              </p>
+          ) : isVideo ? (
+            <div className="relative flex flex-col items-center gap-3 p-4">
+              <img src={b64ToDataUri(data, 'image/jpeg')} alt={meta.name} className="max-h-[45vh] w-auto max-w-full object-contain" />
+              <button
+                className="btn-ghost flex items-center gap-2 px-5 py-2.5 text-xs"
+                onClick={playInBrowser}
+                disabled={xfer.busy}
+              >
+                {xfer.busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                {xfer.busy ? 'Streaming…' : 'Play in browser'}
+              </button>
+            </div>
+          ) : isAudio ? (
+            <div className="flex flex-col items-center gap-3 p-8 text-center">
+              <Music className="h-10 w-10 text-neon-dim" />
+              <button
+                className="btn-ghost flex items-center gap-2 px-5 py-2.5 text-xs"
+                onClick={playInBrowser}
+                disabled={xfer.busy}
+              >
+                {xfer.busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                {xfer.busy ? 'Streaming…' : 'Play in browser'}
+              </button>
+            </div>
+          ) : isPdf ? (
+            <div className="flex flex-col items-center gap-3 p-8 text-center">
+              <FileIcon className="h-10 w-10 text-slate-600" />
+              <button
+                className="btn-ghost flex items-center gap-2 px-5 py-2.5 text-xs"
+                onClick={openInBrowser}
+                disabled={xfer.busy}
+              >
+                {xfer.busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                {xfer.busy ? 'Streaming…' : 'Open PDF in browser'}
+              </button>
             </div>
           ) : (
             <div className="flex flex-col items-center gap-3 p-8 text-center">
@@ -85,9 +221,30 @@ function PreviewModal({ item, onClose }) {
           )}
         </div>
 
-        <button className="btn-ghost mt-3 py-2 text-xs" onClick={download}>
-          <Download className="h-4 w-4" /> Download copy
-        </button>
+        {(xfer.prog || playerErr) && (
+          <div className="mt-2">
+            <ProgressLine prog={xfer.prog} />
+            {playerErr && (
+              <p className="border-2 border-hazard/60 bg-hazard/10 px-3 py-2 font-mono text-[11px] text-hazard">{playerErr}</p>
+            )}
+          </div>
+        )}
+
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <button
+            className="btn-ghost flex items-center justify-center gap-2 py-2 text-xs"
+            onClick={isImage || isText ? downloadPreviewCopy : downloadFull}
+            disabled={xfer.busy}
+          >
+            {xfer.busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            {isImage || isText ? 'Download copy' : 'Download file'}
+          </button>
+          {!isImage && !isText && (
+            <button className="btn-ghost justify-center py-2 text-xs" onClick={onClose}>
+              <X className="h-4 w-4" /> Close
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -105,6 +262,10 @@ export default function MediaPanel({ deviceId, conn }) {
   const [dirPath, setDirPath] = useState('');
   const [dirData, setDirData] = useState(null);
   const [dirBusy, setDirBusy] = useState(false);
+  // multi-select (mark → download as ZIP)
+  const [sel, setSel] = useState(() => new Map());    // key → {params, label}
+  const [zipBusy, setZipBusy] = useState(false);
+  const [zipProg, setZipProg] = useState(null);       // {done, total}
 
   const load = async () => {
     setBusy(true);
@@ -134,11 +295,11 @@ export default function MediaPanel({ deviceId, conn }) {
   }
 
   // ---- previews ----
-  async function openPreview(params) {
+  async function openPreview(params, extra = {}) {
     setPreview('loading');
     try {
       const res = await command('media_preview', params, 60_000);
-      setPreview({ meta: res, data: res.data });
+      setPreview({ meta: { ...res, ...extra, readParams: params }, data: res.data });
     } catch (e) {
       setPreview(null);
       setMsg(`Preview failed: ${e.message}`);
@@ -163,6 +324,53 @@ export default function MediaPanel({ deviceId, conn }) {
     const next = !showFiles;
     setShowFiles(next);
     if (next && !dirData) loadDir(dirPath);
+  }
+
+  // ---- selection / zip download ----
+  function toggleSel(key, params, label) {
+    setSel((prev) => {
+      const next = new Map(prev);
+      if (next.has(key)) next.delete(key);
+      else next.set(key, { params, label });
+      return next;
+    });
+  }
+
+  async function downloadZip() {
+    if (sel.size === 0) return;
+    setZipBusy(true);
+    setZipProg({ done: 0, total: sel.size });
+    const entries = [];
+    const used = new Set();
+    try {
+      const items = [...sel.values()];
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        // Derive a flat, collision-free path inside the ZIP.
+        let name = (it.label || `file-${i + 1}`).replace(/[\\/:*?"<>|]/g, '_');
+        if (used.has(name)) {
+          const dot = name.lastIndexOf('.');
+          const base = dot > 0 ? name.slice(0, dot) : name;
+          const ext = dot > 0 ? name.slice(dot) : '';
+          let n = 2;
+          while (used.has(`${base}-${n}${ext}`)) n++;
+          name = `${base}-${n}${ext}`;
+        }
+        used.add(name);
+        const res = await transferFile(it.params, {});
+        entries.push({ path: name, bytes: res.bytes });
+        setZipProg({ done: i + 1, total: items.length });
+      }
+      const zip = makeZip(entries);
+      downloadBlob(zip, `access-control-files-${Date.now()}.zip`);
+      setSel(new Map());
+      setMsg('');
+    } catch (e) {
+      setMsg(`ZIP download failed: ${e.message}`);
+    } finally {
+      setZipBusy(false);
+      setZipProg(null);
+    }
   }
 
   const albums = Array.from(new Set((media || []).map((m) => m.album).filter(Boolean)));
@@ -199,6 +407,22 @@ export default function MediaPanel({ deviceId, conn }) {
           </button>
         </div>
       </div>
+
+      {/* selection action bar */}
+      {sel.size > 0 && (
+        <div className="animate-fade-up mb-4 flex flex-wrap items-center gap-2 border-2 border-neon bg-neon/10 px-3 py-2">
+          <span className="font-mono text-xs font-bold uppercase tracking-wider text-neon">
+            {sel.size} marked
+          </span>
+          <button className="btn-ghost ml-auto flex items-center gap-2 px-3 py-1.5 text-[11px]" onClick={downloadZip} disabled={zipBusy}>
+            {zipBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Package className="h-3.5 w-3.5" />}
+            {zipBusy ? `Zipping ${zipProg ? `${zipProg.done}/${zipProg.total}` : '…'}` : 'Download ZIP'}
+          </button>
+          <button className="btn-ghost px-3 py-1.5 text-[11px]" onClick={() => setSel(new Map())} disabled={zipBusy}>
+            <X className="h-3.5 w-3.5" /> Clear
+          </button>
+        </div>
+      )}
       {msg && <p className="mb-3 border-2 border-space-600 bg-space-700/60 px-3 py-2 font-mono text-[11px] text-slate-300">{msg}</p>}
 
       {!media ? (
@@ -214,39 +438,58 @@ export default function MediaPanel({ deviceId, conn }) {
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-          {shown.map((m) => (
-            <button
-              key={m.media_id}
-              className="border-2 border-space-600 bg-space-700/40 text-left transition hover:border-neon"
-              onClick={() => openPreview({ mediaId: m.media_id })}
-              title={`Preview ${m.label} (live from the device)`}
-            >
-              <div className="relative aspect-square w-full overflow-hidden bg-black/50">
-                {m.thumb_b64 ? (
-                  <img
-                    src={m.thumb_b64.startsWith('data:') ? m.thumb_b64 : `data:image/jpeg;base64,${m.thumb_b64}`}
-                    alt={m.label}
-                    className="h-full w-full object-cover"
-                    loading="lazy"
-                  />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center text-slate-600">
-                    {m.kind === 'video' ? <Film className="h-6 w-6" /> : <ImageIcon className="h-6 w-6" />}
+          {shown.map((m) => {
+            const key = `m-${m.media_id}`;
+            const checked = sel.has(key);
+            const params = { mediaId: m.media_id };
+            return (
+              <div
+                key={key}
+                className={`relative border-2 bg-space-700/40 transition ${checked ? 'border-neon' : 'border-space-600 hover:border-neon'}`}
+              >
+                <button
+                  className="block w-full text-left"
+                  onClick={() => openPreview({ mediaId: m.media_id }, { readParams: params })}
+                  title={`Open ${m.label} (streams live from the device)`}
+                >
+                  <div className="relative aspect-square w-full overflow-hidden bg-black/50">
+                    {m.thumb_b64 ? (
+                      <img
+                        src={m.thumb_b64.startsWith('data:') ? m.thumb_b64 : `data:image/jpeg;base64,${m.thumb_b64}`}
+                        alt={m.label}
+                        className="h-full w-full object-cover"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-slate-600">
+                        {m.kind === 'video' ? <Film className="h-6 w-6" /> : <ImageIcon className="h-6 w-6" />}
+                      </div>
+                    )}
+                    {m.kind === 'video' && (
+                      <span className="absolute left-1 top-1 chip chip-crit"><Film className="h-3 w-3" /> vid</span>
+                    )}
+                    <span className="absolute bottom-1 right-1 chip border-space-500 bg-black/60 font-mono text-[9px] text-slate-300">
+                      {m.kind === 'video' ? 'play ▸' : 'view'}
+                    </span>
                   </div>
-                )}
-                {m.kind === 'video' && (
-                  <span className="absolute left-1 top-1 chip chip-crit"><Film className="h-3 w-3" /> vid</span>
-                )}
+                  <div className="p-2">
+                    <div className="truncate text-[11px] font-bold text-slate-200" title={m.label}>{m.label}</div>
+                    <div className="truncate font-mono text-[9px] uppercase tracking-wide text-slate-500">
+                      {m.album || '—'} · {m.size_bytes ? `${Math.max(1, Math.round(m.size_bytes / 1024))} KB` : ''}
+                    </div>
+                    <div className="font-mono text-[9px] text-neon-dim">{fmtTime(m.taken_at || m.synced_at)}</div>
+                  </div>
+                </button>
+                <button
+                  className="absolute right-1.5 top-1.5 border-2 p-1 transition"
+                  title={checked ? 'Unmark' : 'Mark for ZIP download'}
+                  onClick={() => toggleSel(key, params, `${(m.album || 'media').replace(/[\\/:*?"<>|]/g, '_')}/${m.label || m.media_id}`)}
+                >
+                  {checked ? <CheckSquare className="h-4 w-4 text-neon" /> : <Square className="h-4 w-4 text-slate-400" />}
+                </button>
               </div>
-              <div className="p-2">
-                <div className="truncate text-[11px] font-bold text-slate-200" title={m.label}>{m.label}</div>
-                <div className="truncate font-mono text-[9px] uppercase tracking-wide text-slate-500">
-                  {m.album || '—'} · {m.size_bytes ? `${Math.max(1, Math.round(m.size_bytes / 1024))} KB` : ''}
-                </div>
-                <div className="font-mono text-[9px] text-neon-dim">{fmtTime(m.taken_at || m.synced_at)}</div>
-              </div>
-            </button>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -289,7 +532,7 @@ export default function MediaPanel({ deviceId, conn }) {
                   {(dirData.dirs || []).map((d) => (
                     <li key={`d-${d}`}>
                       <button
-                        className="flex w-full items-center gap-3 border-b border-space-700 px-3 py-2 text-left hover:bg-space-700/50"
+                        className="flex w-full items-center gap-3 border-b border-space-700 px-3 py-2 text-left transition hover:bg-space-700/50"
                         onClick={() => loadDir(dirPath ? `${dirPath.replace(/\/$/, '')}/${d}` : d)}
                       >
                         <Folder className="h-4 w-4 shrink-0 text-amber-300" />
@@ -297,29 +540,57 @@ export default function MediaPanel({ deviceId, conn }) {
                       </button>
                     </li>
                   ))}
-                  {(dirData.files || []).map((f) => (
-                    <li key={`f-${f.mediaId || f.name}`} className="border-b border-space-700">
-                      <button
-                        className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-space-700/50"
-                        onClick={() => openPreview(f.mediaId ? { mediaId: f.mediaId } : { path: dirPath, name: f.name })}
-                      >
-                        <FileIcon className="h-4 w-4 shrink-0 text-slate-500" />
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm text-slate-200">{f.name}</span>
-                          <span className="block truncate font-mono text-[9px] uppercase text-slate-600">{f.mime}</span>
-                        </span>
-                        <span className="shrink-0 font-mono text-[10px] text-slate-500">
-                          {f.size ? `${Math.max(1, Math.round(f.size / 1024))} KB` : ''}
-                        </span>
-                      </button>
-                    </li>
-                  ))}
+                  {(dirData.files || []).map((f) => {
+                    const key = `f-${dirPath}/${f.name}`;
+                    const checked = sel.has(key);
+                    const params = f.mediaId ? { mediaId: f.mediaId } : { path: dirPath, name: f.name };
+                    return (
+                      <li key={key} className={`border-b border-space-700 transition ${checked ? 'bg-neon/5' : ''}`}>
+                        <div className="flex w-full items-center gap-2 px-3 py-2">
+                          <button
+                            className="p-0.5"
+                            title={checked ? 'Unmark' : 'Mark for ZIP download'}
+                            onClick={() => toggleSel(key, params, `${dirPath || 'files'}/${f.name}`.replace(/^\//, ''))}
+                          >
+                            {checked ? <CheckSquare className="h-4 w-4 text-neon" /> : <Square className="h-4 w-4 text-slate-500" />}
+                          </button>
+                          <button
+                            className="flex min-w-0 flex-1 items-center gap-3 text-left hover:bg-space-700/50"
+                            onClick={() => openPreview(f.mediaId ? { mediaId: f.mediaId } : { path: dirPath, name: f.name })}
+                          >
+                            <FileIcon className="h-4 w-4 shrink-0 text-slate-500" />
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-sm text-slate-200">{f.name}</span>
+                              <span className="block truncate font-mono text-[9px] uppercase text-slate-600">{f.mime}</span>
+                            </span>
+                            <span className="shrink-0 font-mono text-[10px] text-slate-500">
+                              {f.size ? fmtBytes(f.size) : ''}
+                            </span>
+                          </button>
+                          <button
+                            className="shrink-0 border-2 border-space-600 p-1 text-slate-400 transition hover:border-neon hover:text-neon"
+                            title="Download this file now"
+                            onClick={async () => {
+                              try {
+                                const res = await transferFile(params, {});
+                                downloadBlob(res.blob, f.name);
+                              } catch (e) {
+                                setMsg(`Download failed: ${e.message}`);
+                              }
+                            }}
+                          >
+                            <Download className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </div>
           )}
           <p className="mt-2 font-mono text-[10px] uppercase tracking-wider text-slate-600">
-            Previews stream live through the encrypted realtime channel — nothing is stored in the database.
+            Mark any items (gallery or files) then Download ZIP — or use the per-file download button. Everything streams encrypted through the realtime channel, nothing is stored server-side.
           </p>
         </div>
       )}
