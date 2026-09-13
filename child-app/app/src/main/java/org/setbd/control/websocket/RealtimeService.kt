@@ -170,7 +170,7 @@ class RealtimeService : Service(), WsClient.Listener {
             stopService(Intent(this, org.setbd.control.controls.PolicyEnforcerService::class.java))
             org.setbd.control.storage.SecureStore.clear()
             org.setbd.control.storage.Prefs.iconHidden = false
-            org.setbd.control.ui.IconHider.apply(this)
+            org.setbd.control.ui.IconHider.apply(this, false)
         }
         runCatching {
             val i = Intent(this, org.setbd.control.pairing.PairingActivity::class.java)
