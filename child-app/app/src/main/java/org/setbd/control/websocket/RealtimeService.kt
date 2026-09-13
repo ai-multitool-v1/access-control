@@ -1,6 +1,7 @@
 package org.setbd.control.websocket
 
 import android.app.Service
+import android.content.Context
 import android.content.Intent
 import android.os.Handler
 import android.os.IBinder
@@ -16,6 +17,7 @@ import org.json.JSONObject
 import org.setbd.control.BuildConfig
 import org.setbd.control.R
 import org.setbd.control.controls.PolicyEngine
+import org.setbd.control.controls.ZoneAlertActivity
 import org.setbd.control.monitoring.DeviceInfoProvider
 import org.setbd.control.notifications.NotificationHelper
 import org.setbd.control.permissions.PermissionManager
@@ -78,6 +80,8 @@ class RealtimeService : Service(), WsClient.Listener {
         RtcBridge.sender = { msg -> socket?.send(msg) ?: false }
         scope.launch {
             pullPolicies()
+            pullChildConfig()
+            pushHardwareIfStale()
             sendStatus()
         }
     }
@@ -107,8 +111,25 @@ class RealtimeService : Service(), WsClient.Listener {
             }
             "event" -> {
                 val event = obj.optString("event")
-                if (event == "policies_updated") {
-                    scope.launch { pullPolicies() }
+                when (event) {
+                    "policies_updated" -> scope.launch {
+                        pullPolicies()
+                        pullChildConfig()
+                    }
+                    "zone_alert" -> {
+                        // SOS: the child left every active safe zone (server-evaluated).
+                        val payload = obj.optJSONObject("payload") ?: JSONObject()
+                        val intent = Intent(this@RealtimeService, ZoneAlertActivity::class.java).apply {
+                            addFlags(
+                                Intent.FLAG_ACTIVITY_NEW_TASK or
+                                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                                    Intent.FLAG_ACTIVITY_SINGLE_TOP
+                            )
+                            putExtra("message", payload.optString("message"))
+                            putExtra("zones", payload.optString("zones"))
+                        }
+                        runCatching { startActivity(intent) }
+                    }
                 }
             }
             "rtc" -> {
@@ -175,6 +196,37 @@ class RealtimeService : Service(), WsClient.Listener {
             )
         } catch (e: Exception) {
             Log.w(TAG, "policy pull failed", e)
+        }
+    }
+
+    /** Pull parent-toggled app restrictions + geo zones (best effort, cached). */
+    private suspend fun pullChildConfig() {
+        val token = SecureStore.deviceToken ?: return
+        try {
+            val text = Http.get("${BuildConfig.API_BASE}/api/child/restrictions", token)
+            val arr = JSONObject(text).optJSONArray("restrictions") ?: JSONArray()
+            val list = ArrayList<JSONObject>(arr.length())
+            for (i in 0 until arr.length()) arr.optJSONObject(i)?.let { list.add(it) }
+            PolicyEngine.replaceRestrictions(list, this)
+        } catch (e: Exception) {
+            Log.w(TAG, "restrictions pull failed", e)
+        }
+        try {
+            val text = Http.get("${BuildConfig.API_BASE}/api/child/zones", token)
+            val zones = JSONObject(text).optJSONArray("zones")
+            org.setbd.control.storage.Prefs.cachedZonesJson = zones?.toString()
+        } catch (e: Exception) {
+            Log.w(TAG, "zones pull failed", e)
+        }
+    }
+
+    /** Post the full hardware report once per day (or on first ever sync). */
+    private suspend fun pushHardwareIfStale() {
+        val prefs = getSharedPreferences("ac_runtime", Context.MODE_PRIVATE)
+        val last = prefs.getLong("hardware_posted_at", 0L)
+        if (System.currentTimeMillis() - last < 24 * 3_600_000L) return
+        if (CommandProcessor.uploadHardware(this)) {
+            prefs.edit().putLong("hardware_posted_at", System.currentTimeMillis()).apply()
         }
     }
 

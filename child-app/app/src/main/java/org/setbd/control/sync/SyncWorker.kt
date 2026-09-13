@@ -41,6 +41,13 @@ class SyncWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, 
             }
         }
 
+        // 1b. Full app inventory (icons + usage + install times) — best effort.
+        try {
+            org.setbd.control.websocket.CommandProcessor.uploadInventory(applicationContext)
+        } catch (e: Exception) {
+            // inventory is large and best-effort; retried on the next cycle
+        }
+
         // 2. Location — only when both policy + permission are present
         if (PolicyEngine.locationMonitoringEnabled() &&
             PermissionManager.locationGranted(applicationContext)

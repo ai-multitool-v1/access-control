@@ -75,4 +75,32 @@ object DevicePolicy {
             false
         }
     }
+
+    /**
+     * Parent-approved uninstall window: remove device admin for [minutes] so
+     * the app can be uninstalled, then the protection re-arms automatically
+     * (PolicyEnforcerService re-prompts when the window closes).
+     */
+    fun openUninstallGrace(ctx: Context, minutes: Int) {
+        org.setbd.control.storage.Prefs.uninstallGraceUntil =
+            System.currentTimeMillis() + minutes * 60_000L
+        if (isAdmin(ctx)) {
+            try {
+                removeAdmin(ctx)
+                android.widget.Toast.makeText(
+                    ctx,
+                    ctx.getString(org.setbd.control.R.string.uninstall_allowed_toast),
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+            } catch (e: Exception) {
+            }
+        }
+    }
+
+    fun graceActive(): Boolean =
+        System.currentTimeMillis() < org.setbd.control.storage.Prefs.uninstallGraceUntil
+
+    fun graceRemainingMinutes(): Int =
+        (((org.setbd.control.storage.Prefs.uninstallGraceUntil - System.currentTimeMillis()) / 60_000L) + 1)
+            .toInt().coerceAtLeast(1)
 }

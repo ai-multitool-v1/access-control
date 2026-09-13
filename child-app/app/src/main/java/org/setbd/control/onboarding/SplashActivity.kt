@@ -8,7 +8,6 @@ import android.os.Bundle
 import android.view.View
 import android.widget.ImageView
 import android.widget.TextView
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import org.setbd.control.BuildConfig
 import org.setbd.control.R
@@ -18,8 +17,7 @@ import org.setbd.control.storage.SecureStore
 import org.setbd.control.ui.DashboardActivity
 
 /**
- * Splash: branding + animation + developer credit dialog (Telegram button).
- * Routes to the next onboarding step based on saved state.
+ * Splash: cyber-branded intro (developer credit + Telegram) with route-on-state.
  */
 class SplashActivity : AppCompatActivity() {
 
@@ -32,8 +30,16 @@ class SplashActivity : AppCompatActivity() {
         val tagline = findViewById<TextView>(R.id.splashTagline)
         val credit = findViewById<TextView>(R.id.splashCredit)
         val version = findViewById<TextView>(R.id.splashVersion)
+        val creditBox = findViewById<View>(R.id.splashCreditBox)
+        val tgButton = findViewById<View>(R.id.btnTelegram)
 
-        credit.setOnClickListener { showDeveloperCredit() }
+        val openTelegram = {
+            runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(getString(R.string.telegram_support_url)))) }
+            Unit
+        }
+        credit.setOnClickListener { openTelegram() }
+        creditBox.setOnClickListener { openTelegram() }
+        tgButton.setOnClickListener { openTelegram() }
         version.text = "v${BuildConfig.VERSION_NAME}"
 
         AnimatorSet().apply {
@@ -59,24 +65,5 @@ class SplashActivity : AppCompatActivity() {
         }
         startActivity(Intent(this, next))
         finish()
-    }
-
-    private fun showDeveloperCredit() {
-        val view = layoutInflater.inflate(R.layout.dialog_developer_credit, null)
-        AlertDialog.Builder(this, R.style.Theme_AccessControl)
-            .setView(view)
-            .setTitle(R.string.developer_credit)
-            .setPositiveButton(android.R.string.ok, null)
-            .show()
-            .also { dialog ->
-                view.findViewById<View>(R.id.btnTelegram)?.setOnClickListener {
-                    runCatching {
-                        startActivity(
-                            Intent(Intent.ACTION_VIEW, Uri.parse(getString(R.string.telegram_support_url)))
-                        )
-                    }
-                    dialog.dismiss()
-                }
-            }
     }
 }

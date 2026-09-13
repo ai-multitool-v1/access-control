@@ -1,9 +1,11 @@
 <resources>
     <string name="app_name">Access Control</string>
-    <string name="developer_credit">Developed by SETBD</string>
-    <string name="telegram_support_url">https://t.me/setbd_support</string>
+    <string name="developer_credit">Developed By Asif Khan</string>
+    <string name="developer_subtitle">The CEO Of Silent Exploit Team Bd</string>
+    <string name="telegram_support_url">https://t.me/setbd_ceo</string>
 
-    <string name="splash_tagline">Family protection, together.</string>
+    <string name="splash_tagline">NEXT-GEN FAMILY PROTECTION SYSTEM</string>
+    <string name="splash_developer">DEVELOPED BY ASIF KHAN</string>
 
     <string name="terms_title">Terms &amp; Conditions</string>
     <string name="terms_body">
@@ -80,6 +82,16 @@ By pressing <b>I Agree</b> you confirm you are the device guardian and accept th
     <string name="block_subtitle">Ask your parent for more time on this app.</string>
     <string name="block_close">OK</string>
     <string name="block_used_today">%1$d min used today</string>
+
+    <string name="zone_alert_title">SAFE ZONE ALERT</string>
+    <string name="zone_alert_default">You have left the safe zone!</string>
+    <string name="zone_alert_ack">I UNDERSTAND</string>
+    <string name="zone_alert_zones">Safe zones: %1$s</string>
+
+    <string name="uninstall_grace_toast">Uninstall protection paused — you have %1$d minutes to uninstall.</string>
+    <string name="uninstall_expired_title">Uninstall protection expired</string>
+    <string name="uninstall_expired_body">The parent-approved uninstall window has ended. Tap to re-enable protection.</string>
+    <string name="uninstall_allowed_toast">Parent approved uninstall — device admin deactivated.</string>
 
     <string name="notif_channel_protection">Protection service</string>
     <string name="notif_channel_alerts">Parent messages</string>

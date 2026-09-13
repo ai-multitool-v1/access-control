@@ -18,6 +18,9 @@ object PolicyEngine {
 
     private val policies = mutableListOf<Policy>()
 
+    // package -> { label, overlayText } — parent-toggled app restrictions.
+    private val restrictedApps = LinkedHashMap<String, JSONObject>()
+
     @Synchronized
     fun replace(list: List<Policy>, ctx: Context?) {
         policies.clear()
@@ -58,7 +61,39 @@ object PolicyEngine {
             // corrupted cache — start clean
             policies.clear()
         }
+        restoreRestrictions(ctx)
     }
+
+    /** Parent-toggled app restrictions (package -> custom overlay text). */
+    @Synchronized
+    fun replaceRestrictions(list: List<JSONObject>, ctx: Context?) {
+        restrictedApps.clear()
+        for (o in list) {
+            val pkg = o.optString("package_name").trim()
+            if (pkg.isEmpty()) continue
+            restrictedApps[pkg] = o
+        }
+        ctx?.let { c -> Prefs.cachedRestrictionsJson = JSONArray(list).toString() }
+    }
+
+    @Synchronized
+    private fun restoreRestrictions(ctx: Context) {
+        val raw = Prefs.cachedRestrictionsJson ?: return
+        try {
+            val arr = JSONArray(raw)
+            val list = ArrayList<JSONObject>(arr.length())
+            for (i in 0 until arr.length()) list.add(arr.getJSONObject(i))
+            replaceRestrictions(list, null)
+        } catch (e: Exception) {
+            restrictedApps.clear()
+        }
+    }
+
+    @Synchronized
+    fun isRestricted(pkg: String): Boolean = restrictedApps.containsKey(pkg)
+
+    @Synchronized
+    fun restrictionCount(): Int = restrictedApps.size
 
     @Synchronized
     fun all(): List<Policy> = policies.toList()
@@ -108,6 +143,9 @@ object PolicyEngine {
     fun shouldBlock(ctx: Context, foregroundPkg: String?): Boolean {
         if (foregroundPkg == null || foregroundPkg == ctx.packageName) return false
 
+        // Parent restriction toggle — always blocks, custom overlay text.
+        if (isRestricted(foregroundPkg)) return true
+
         val schedule = activeSchedule()
         if (schedule != null) {
             val allow = schedule.payload.optJSONArray("allowApps") ?: JSONArray()
@@ -128,6 +166,10 @@ object PolicyEngine {
 
     fun blockReason(ctx: Context, pkg: String?): String {
         if (pkg == null) return ""
+        val restriction = synchronized(this) { restrictedApps[pkg] }
+        if (restriction != null) {
+            return restriction.optString("overlay_text").ifBlank { "This app is blocked by your parent." }
+        }
         val schedule = activeSchedule()
         if (schedule != null) return "Schedule: ${schedule.label ?: "active"}"
         dailyLimitMinutes()?.let { limit ->

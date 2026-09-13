@@ -13,8 +13,8 @@
 
     <style name="Theme.AccessControl.Splash">
         <item name="android:windowBackground">@drawable/bg_splash</item>
-        <item name="android:statusBarColor">@color/clay_primary</item>
-        <item name="android:navigationBarColor">@color/clay_primary</item>
+        <item name="android:statusBarColor">#050807</item>
+        <item name="android:navigationBarColor">#050807</item>
         <item name="android:windowLightStatusBar">false</item>
     </style>
 
@@ -48,6 +48,20 @@
         <item name="android:elevation">6dp</item>
         <item name="android:layout_marginTop">12dp</item>
         <item name="android:padding">16dp</item>
+    </style>
+
+    <style name="PermHeader">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:gravity">center_vertical</item>
+    </style>
+
+    <style name="PermIcon">
+        <item name="android:layout_width">26dp</item>
+        <item name="android:layout_height">26dp</item>
+        <item name="android:layout_marginEnd">10dp</item>
+        <item name="android:tint">@color/clay_primary</item>
     </style>
 
     <style name="PermTitle">

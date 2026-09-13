@@ -53,6 +53,10 @@ object UsageStatsProvider {
     fun minutesForPackage(ctx: Context, packageName: String): Long =
         queryToday(ctx).firstOrNull { it.packageName == packageName }?.minutes ?: 0L
 
+    /** package -> minutes map for the app inventory sync (empty when no permission). */
+    fun minutesPerPackageToday(ctx: Context): Map<String, Long> =
+        queryToday(ctx).associate { it.packageName to it.minutes }
+
     /** Most recently resumed foreground app (last 20 seconds of usage events). */
     fun currentForeground(ctx: Context): String? {
         if (!org.setbd.control.permissions.PermissionManager.usageAccessGranted(ctx)) return null

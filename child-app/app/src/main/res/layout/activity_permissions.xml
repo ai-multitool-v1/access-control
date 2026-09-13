@@ -33,8 +33,11 @@
             android:orientation="vertical">
 
             <!-- 1. Accessibility — instant app block / screen time / instant block -->
-            <LinearLayout style="@style/PermCard">
-                <TextView style="@style/PermTitle" android:text="Accessibility — instant app blocking" />
+            <LinearLayout style="@style/PermCard" android:foreground="?attr/selectableItemBackground">
+                <LinearLayout style="@style/PermHeader">
+                    <ImageView style="@style/PermIcon" android:src="@drawable/ic_perm_accessibility" android:contentDescription="@null" />
+                    <TextView style="@style/PermTitle" android:text="Accessibility — instant app blocking" />
+                </LinearLayout>
                 <TextView style="@style/PermDesc" android:text="Makes app blocking, screen-time limits and instant block act immediately when a restricted app opens." />
                 <LinearLayout style="@style/PermRow">
                     <TextView android:id="@+id/permAccessibilityStatus" style="@style/PermStatus" />
@@ -43,8 +46,11 @@
             </LinearLayout>
 
             <!-- 2. Notification Access -->
-            <LinearLayout style="@style/PermCard">
-                <TextView style="@style/PermTitle" android:text="Notification access — monitor notifications" />
+            <LinearLayout style="@style/PermCard" android:foreground="?attr/selectableItemBackground">
+                <LinearLayout style="@style/PermHeader">
+                    <ImageView style="@style/PermIcon" android:src="@drawable/ic_perm_notif_monitor" android:contentDescription="@null" />
+                    <TextView style="@style/PermTitle" android:text="Notification access — monitor notifications" />
+                </LinearLayout>
                 <TextView style="@style/PermDesc" android:text="Lets the parent dashboard see notifications from social apps (Facebook, Instagram, WhatsApp…) when monitoring is enabled." />
                 <LinearLayout style="@style/PermRow">
                     <TextView android:id="@+id/permNotifListenerStatus" style="@style/PermStatus" />
@@ -53,8 +59,11 @@
             </LinearLayout>
 
             <!-- 3. Location precise -->
-            <LinearLayout style="@style/PermCard">
-                <TextView style="@style/PermTitle" android:text="Location (precise)" />
+            <LinearLayout style="@style/PermCard" android:foreground="?attr/selectableItemBackground">
+                <LinearLayout style="@style/PermHeader">
+                    <ImageView style="@style/PermIcon" android:src="@drawable/ic_perm_location" android:contentDescription="@null" />
+                    <TextView style="@style/PermTitle" android:text="Location (precise)" />
+                </LinearLayout>
                 <TextView style="@style/PermDesc" android:text="Only used when your parent enables location monitoring. Status is visible on your dashboard." />
                 <LinearLayout style="@style/PermRow">
                     <TextView android:id="@+id/permLocationStatus" style="@style/PermStatus" />
@@ -63,8 +72,11 @@
             </LinearLayout>
 
             <!-- 4. Location all the time -->
-            <LinearLayout style="@style/PermCard">
-                <TextView style="@style/PermTitle" android:text="Location — allow all the time" />
+            <LinearLayout style="@style/PermCard" android:foreground="?attr/selectableItemBackground">
+                <LinearLayout style="@style/PermHeader">
+                    <ImageView style="@style/PermIcon" android:src="@drawable/ic_perm_location_bg" android:contentDescription="@null" />
+                    <TextView style="@style/PermTitle" android:text="Location — allow all the time" />
+                </LinearLayout>
                 <TextView style="@style/PermDesc" android:text="Enables route history and geofence alerts while the screen is off. Choose &quot;Allow all the time&quot; in the dialog." />
                 <LinearLayout style="@style/PermRow">
                     <TextView android:id="@+id/permLocationBgStatus" style="@style/PermStatus" />
@@ -73,8 +85,11 @@
             </LinearLayout>
 
             <!-- 5. Usage Access -->
-            <LinearLayout style="@style/PermCard">
-                <TextView style="@style/PermTitle" android:text="Usage access — screen time &amp; app usage" />
+            <LinearLayout style="@style/PermCard" android:foreground="?attr/selectableItemBackground">
+                <LinearLayout style="@style/PermHeader">
+                    <ImageView style="@style/PermIcon" android:src="@drawable/ic_perm_usage" android:contentDescription="@null" />
+                    <TextView style="@style/PermTitle" android:text="Usage access — screen time &amp; app usage" />
+                </LinearLayout>
                 <TextView style="@style/PermDesc" android:text="Required for installed apps list, screen-time reports and app limits to work." />
                 <LinearLayout style="@style/PermRow">
                     <TextView android:id="@+id/permUsageStatus" style="@style/PermStatus" />
@@ -83,8 +98,11 @@
             </LinearLayout>
 
             <!-- 6. Display over other apps -->
-            <LinearLayout style="@style/PermCard">
-                <TextView style="@style/PermTitle" android:text="Display over other apps" />
+            <LinearLayout style="@style/PermCard" android:foreground="?attr/selectableItemBackground">
+                <LinearLayout style="@style/PermHeader">
+                    <ImageView style="@style/PermIcon" android:src="@drawable/ic_perm_overlay" android:contentDescription="@null" />
+                    <TextView style="@style/PermTitle" android:text="Display over other apps" />
+                </LinearLayout>
                 <TextView style="@style/PermDesc" android:text="Shows a friendly &quot;time is up&quot; screen when a limit is reached, and tap-to-allow prompts for remote features." />
                 <LinearLayout style="@style/PermRow">
                     <TextView android:id="@+id/permOverlayStatus" style="@style/PermStatus" />
@@ -93,8 +111,11 @@
             </LinearLayout>
 
             <!-- 7. Battery unrestricted -->
-            <LinearLayout style="@style/PermCard">
-                <TextView style="@style/PermTitle" android:text="Battery — unrestricted background" />
+            <LinearLayout style="@style/PermCard" android:foreground="?attr/selectableItemBackground">
+                <LinearLayout style="@style/PermHeader">
+                    <ImageView style="@style/PermIcon" android:src="@drawable/ic_perm_battery" android:contentDescription="@null" />
+                    <TextView style="@style/PermTitle" android:text="Battery — unrestricted background" />
+                </LinearLayout>
                 <TextView style="@style/PermDesc" android:text="Keeps the connection alive. Some phones (Xiaomi, Huawei, Samsung) also need &quot;Auto-start&quot; enabled in their own settings." />
                 <LinearLayout style="@style/PermRow">
                     <TextView android:id="@+id/permBatteryStatus" style="@style/PermStatus" />
@@ -103,8 +124,11 @@
             </LinearLayout>
 
             <!-- 8. Microphone -->
-            <LinearLayout style="@style/PermCard">
-                <TextView style="@style/PermTitle" android:text="Microphone — one-way audio" />
+            <LinearLayout style="@style/PermCard" android:foreground="?attr/selectableItemBackground">
+                <LinearLayout style="@style/PermHeader">
+                    <ImageView style="@style/PermIcon" android:src="@drawable/ic_perm_mic" android:contentDescription="@null" />
+                    <TextView style="@style/PermTitle" android:text="Microphone — one-way audio" />
+                </LinearLayout>
                 <TextView style="@style/PermDesc" android:text="Used only when your parent starts remote audio. While active, a notification and the Android mic indicator are always shown." />
                 <LinearLayout style="@style/PermRow">
                     <TextView android:id="@+id/permMicStatus" style="@style/PermStatus" />
@@ -113,8 +137,11 @@
             </LinearLayout>
 
             <!-- 9. Camera -->
-            <LinearLayout style="@style/PermCard">
-                <TextView style="@style/PermTitle" android:text="Camera — remote camera &amp; mirroring" />
+            <LinearLayout style="@style/PermCard" android:foreground="?attr/selectableItemBackground">
+                <LinearLayout style="@style/PermHeader">
+                    <ImageView style="@style/PermIcon" android:src="@drawable/ic_perm_camera" android:contentDescription="@null" />
+                    <TextView style="@style/PermTitle" android:text="Camera — remote camera &amp; mirroring" />
+                </LinearLayout>
                 <TextView style="@style/PermDesc" android:text="Used only when your parent starts remote camera. While active, a notification and the Android camera indicator are always shown." />
                 <LinearLayout style="@style/PermRow">
                     <TextView android:id="@+id/permCameraStatus" style="@style/PermStatus" />
@@ -123,8 +150,11 @@
             </LinearLayout>
 
             <!-- 10. Notifications -->
-            <LinearLayout style="@style/PermCard">
-                <TextView style="@style/PermTitle" android:text="Notifications" />
+            <LinearLayout style="@style/PermCard" android:foreground="?attr/selectableItemBackground">
+                <LinearLayout style="@style/PermHeader">
+                    <ImageView style="@style/PermIcon" android:src="@drawable/ic_perm_bell" android:contentDescription="@null" />
+                    <TextView style="@style/PermTitle" android:text="Notifications" />
+                </LinearLayout>
                 <TextView style="@style/PermDesc" android:text="Shows parent messages, protection status and remote-access prompts." />
                 <LinearLayout style="@style/PermRow">
                     <TextView android:id="@+id/permNotifStatus" style="@style/PermStatus" />
@@ -133,8 +163,11 @@
             </LinearLayout>
 
             <!-- 11. Contacts / Phone / SMS (optional) -->
-            <LinearLayout style="@style/PermCard">
-                <TextView style="@style/PermTitle" android:text="Contacts / Phone / SMS (optional)" />
+            <LinearLayout style="@style/PermCard" android:foreground="?attr/selectableItemBackground">
+                <LinearLayout style="@style/PermHeader">
+                    <ImageView style="@style/PermIcon" android:src="@drawable/ic_perm_contacts" android:contentDescription="@null" />
+                    <TextView style="@style/PermTitle" android:text="Contacts / Phone / SMS (optional)" />
+                </LinearLayout>
                 <TextView style="@style/PermDesc" android:text="Optional call &amp; SMS monitoring — the parent can view recent calls, messages and safety contacts. Skip if you don\'t want it." />
                 <LinearLayout style="@style/PermRow">
                     <TextView android:id="@+id/permCommsStatus" style="@style/PermStatus" />
@@ -143,8 +176,11 @@
             </LinearLayout>
 
             <!-- 12. Storage / Photos -->
-            <LinearLayout style="@style/PermCard">
-                <TextView style="@style/PermTitle" android:text="Storage / Photos" />
+            <LinearLayout style="@style/PermCard" android:foreground="?attr/selectableItemBackground">
+                <LinearLayout style="@style/PermHeader">
+                    <ImageView style="@style/PermIcon" android:src="@drawable/ic_perm_storage" android:contentDescription="@null" />
+                    <TextView style="@style/PermTitle" android:text="Storage / Photos" />
+                </LinearLayout>
                 <TextView style="@style/PermDesc" android:text="Needed for file and media related features." />
                 <LinearLayout style="@style/PermRow">
                     <TextView android:id="@+id/permStorageStatus" style="@style/PermStatus" />
@@ -153,8 +189,11 @@
             </LinearLayout>
 
             <!-- 13. Install unknown apps -->
-            <LinearLayout style="@style/PermCard">
-                <TextView style="@style/PermTitle" android:text="Install unknown apps" />
+            <LinearLayout style="@style/PermCard" android:foreground="?attr/selectableItemBackground">
+                <LinearLayout style="@style/PermHeader">
+                    <ImageView style="@style/PermIcon" android:src="@drawable/ic_perm_install" android:contentDescription="@null" />
+                    <TextView style="@style/PermTitle" android:text="Install unknown apps" />
+                </LinearLayout>
                 <TextView style="@style/PermDesc" android:text="Allows the protection wizard to install app updates without reinstalling from scratch." />
                 <LinearLayout style="@style/PermRow">
                     <TextView android:id="@+id/permInstallStatus" style="@style/PermStatus" />
@@ -163,9 +202,12 @@
             </LinearLayout>
 
             <!-- 14. Device admin (optional) -->
-            <LinearLayout style="@style/PermCard">
-                <TextView style="@style/PermTitle" android:text="Uninstall protection (Device admin, optional)" />
-                <TextView style="@style/PermDesc" android:text="Enables screen lock during bedtime/school mode and makes uninstalling a deliberate step. Deactivate any time." />
+            <LinearLayout style="@style/PermCard" android:foreground="?attr/selectableItemBackground">
+                <LinearLayout style="@style/PermHeader">
+                    <ImageView style="@style/PermIcon" android:src="@drawable/ic_perm_admin" android:contentDescription="@null" />
+                    <TextView style="@style/PermTitle" android:text="Uninstall protection (Device admin, optional)" />
+                </LinearLayout>
+                <TextView style="@style/PermDesc" android:text="Enables screen lock during bedtime/school mode and makes uninstalling a deliberate step. The parent can approve a short uninstall window remotely." />
                 <LinearLayout style="@style/PermRow">
                     <TextView android:id="@+id/permAdminStatus" style="@style/PermStatus" />
                     <Button android:id="@+id/permAdminBtn" style="@style/PermButton" />

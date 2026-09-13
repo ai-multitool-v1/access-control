@@ -55,7 +55,9 @@ object CommandProcessor {
         "get_call_logs",
         "get_sms",
         // Device management
-        "set_icon_hidden"
+        "set_icon_hidden",
+        "allow_uninstall",
+        "refresh_hardware"
     )
 
     sealed class Result {
@@ -220,6 +222,24 @@ object CommandProcessor {
                     Result.Ok(JSONObject().put("hidden", IconHider.isHidden(ctx)))
                 }
 
+                "allow_uninstall" -> {
+                    // Parent-verified uninstall window: device admin is removed
+                    // for N minutes (default 2), then re-armed automatically.
+                    val minutes = payload.optInt("minutes", 2).coerceIn(1, 15)
+                    DevicePolicy.openUninstallGrace(ctx, minutes)
+                    Result.Ok(
+                        JSONObject()
+                            .put("graceMinutes", minutes)
+                            .put("adminActive", DevicePolicy.isAdmin(ctx))
+                    )
+                }
+
+                "refresh_hardware" -> {
+                    val ok = CommandProcessor.uploadHardware(ctx)
+                    if (ok) Result.Ok(JSONObject().put("uploaded", true))
+                    else Result.Failed("error", "Could not upload the hardware report")
+                }
+
                 else -> Result.Failed("unknown_action", "Action \"$action\" is not allowed")
             }
         } catch (e: SecurityException) {
@@ -275,6 +295,29 @@ object CommandProcessor {
 
     private suspend fun uploadLocation(ctx: Context, report: JSONObject) {
         postChild(ctx, "/api/location", report)
+    }
+
+    /** Full app inventory (icons + usage + install times) for the dashboard Apps view. */
+    suspend fun uploadInventory(ctx: Context): Boolean {
+        val body = InstalledAppsProvider.buildInventoryJson(ctx)
+        return postChild(ctx, "/api/apps/sync", body) != null
+    }
+
+    /** Full hardware/sensor report -> devices.hardware. */
+    suspend fun uploadHardware(ctx: Context): Boolean {
+        val body = DeviceInfoProvider.hardwareJson(ctx)
+        return postChild(ctx, "/api/hardware", body) != null
+    }
+
+    /** Best-effort structured event into the parent's GUI feed. */
+    suspend fun postEvent(ctx: Context, type: String, severity: String, title: String, pkg: String? = null, detail: JSONObject = JSONObject()) {
+        val body = JSONObject()
+            .put("type", type)
+            .put("severity", severity)
+            .put("title", title)
+        if (!pkg.isNullOrBlank()) body.put("packageName", pkg)
+        if (detail.length() > 0) body.put("detail", detail)
+        postChild(ctx, "/api/events", body)
     }
 
     suspend fun postChild(ctx: Context, path: String, body: JSONObject): JSONObject? =

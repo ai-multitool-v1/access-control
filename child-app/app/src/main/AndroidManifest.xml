@@ -108,6 +108,17 @@
             android:launchMode="singleTop"
             android:theme="@style/Theme.AccessControl.Block" />
 
+        <!-- SOS safe-zone overlay: shown when the child leaves all active zones.
+             Server-triggered, always visible, must be acknowledged. -->
+        <activity
+            android:name=".controls.ZoneAlertActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:theme="@style/Theme.AccessControl.Block" />
+
         <!-- Launcher alias: hiding the app disables THIS component only, so
              SecretCodeReceiver (dial *#*#9999#*#*) keeps working. -->
         <activity-alias
