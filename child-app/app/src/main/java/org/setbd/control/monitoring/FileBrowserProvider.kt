@@ -330,8 +330,9 @@ object FileBrowserProvider {
     private fun readUpTo(ins: InputStream, max: Int): ByteArray {
         val out = ByteArrayOutputStream(minOf(max, 64 * 1024))
         val buf = ByteArray(16 * 1024)
-        var read: Int
-        while (out.size() < max && ins.read(buf).also { read = it } > 0) {
+        while (out.size() < max) {
+            val read = ins.read(buf)
+            if (read <= 0) break
             val take = minOf(read, max - out.size())
             out.write(buf, 0, take)
         }
