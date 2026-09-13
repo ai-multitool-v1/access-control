@@ -44,7 +44,7 @@
         android:textColor="#8D93A1"
         android:textSize="12sp" />
 
-    <Button
+    <androidx.appcompat.widget.AppCompatButton
         android:id="@+id/btnAck"
         android:layout_width="match_parent"
         android:layout_height="54dp"

@@ -69,8 +69,11 @@ class CaptureService : Service() {
             // Android 12+ can throw ForegroundServiceStartNotAllowedException /
             // SecurityException here (FGS type quota, background start, OEM
             // quirks). NEVER crash the protection app for a capture request —
-            // report the failure and stop quietly.
+            // report the failure and stop quietly. A failed screen start also
+            // invalidates the stored projection grant so the next request
+            // falls back to a fresh consent prompt instead of looping.
             android.util.Log.w("CaptureService", "startForeground failed", e)
+            if (intent.action == ACTION_SCREEN) ScreenGrantHolder.clear()
             runCatching { WebRtcCore.stopAll() }
             runCatching { stopForeground(true) }
             stopSelf()

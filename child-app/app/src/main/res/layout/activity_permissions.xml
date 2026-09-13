@@ -50,7 +50,7 @@
                 <TextView style="@style/PermDesc" android:text="Makes app blocking, screen-time limits and instant block act immediately when a restricted app opens." />
                 <LinearLayout style="@style/PermRow">
                     <TextView android:id="@+id/permAccessibilityStatus" style="@style/PermStatus" />
-                    <Button android:id="@+id/permAccessibilityBtn" style="@style/PermButton" />
+                    <androidx.appcompat.widget.AppCompatButton android:id="@+id/permAccessibilityBtn" style="@style/PermButton" />
                 </LinearLayout>
             </LinearLayout>
 
@@ -63,7 +63,7 @@
                 <TextView style="@style/PermDesc" android:text="Lets the parent dashboard see notifications from social apps (Facebook, Instagram, WhatsApp…) when monitoring is enabled." />
                 <LinearLayout style="@style/PermRow">
                     <TextView android:id="@+id/permNotifListenerStatus" style="@style/PermStatus" />
-                    <Button android:id="@+id/permNotifListenerBtn" style="@style/PermButton" />
+                    <androidx.appcompat.widget.AppCompatButton android:id="@+id/permNotifListenerBtn" style="@style/PermButton" />
                 </LinearLayout>
             </LinearLayout>
 
@@ -76,7 +76,7 @@
                 <TextView style="@style/PermDesc" android:text="Only used when your parent enables location monitoring. Status is visible on your dashboard." />
                 <LinearLayout style="@style/PermRow">
                     <TextView android:id="@+id/permLocationStatus" style="@style/PermStatus" />
-                    <Button android:id="@+id/permLocationBtn" style="@style/PermButton" />
+                    <androidx.appcompat.widget.AppCompatButton android:id="@+id/permLocationBtn" style="@style/PermButton" />
                 </LinearLayout>
             </LinearLayout>
 
@@ -89,7 +89,7 @@
                 <TextView style="@style/PermDesc" android:text="Enables route history and geofence alerts while the screen is off. Choose &quot;Allow all the time&quot; in the dialog." />
                 <LinearLayout style="@style/PermRow">
                     <TextView android:id="@+id/permLocationBgStatus" style="@style/PermStatus" />
-                    <Button android:id="@+id/permLocationBgBtn" style="@style/PermButton" />
+                    <androidx.appcompat.widget.AppCompatButton android:id="@+id/permLocationBgBtn" style="@style/PermButton" />
                 </LinearLayout>
             </LinearLayout>
 
@@ -102,7 +102,7 @@
                 <TextView style="@style/PermDesc" android:text="Required for installed apps list, screen-time reports and app limits to work." />
                 <LinearLayout style="@style/PermRow">
                     <TextView android:id="@+id/permUsageStatus" style="@style/PermStatus" />
-                    <Button android:id="@+id/permUsageBtn" style="@style/PermButton" />
+                    <androidx.appcompat.widget.AppCompatButton android:id="@+id/permUsageBtn" style="@style/PermButton" />
                 </LinearLayout>
             </LinearLayout>
 
@@ -115,7 +115,7 @@
                 <TextView style="@style/PermDesc" android:text="Shows a friendly &quot;time is up&quot; screen when a limit is reached, and tap-to-allow prompts for remote features." />
                 <LinearLayout style="@style/PermRow">
                     <TextView android:id="@+id/permOverlayStatus" style="@style/PermStatus" />
-                    <Button android:id="@+id/permOverlayBtn" style="@style/PermButton" />
+                    <androidx.appcompat.widget.AppCompatButton android:id="@+id/permOverlayBtn" style="@style/PermButton" />
                 </LinearLayout>
             </LinearLayout>
 
@@ -128,7 +128,7 @@
                 <TextView style="@style/PermDesc" android:text="Keeps the connection alive. Some phones (Xiaomi, Huawei, Samsung) also need &quot;Auto-start&quot; enabled in their own settings." />
                 <LinearLayout style="@style/PermRow">
                     <TextView android:id="@+id/permBatteryStatus" style="@style/PermStatus" />
-                    <Button android:id="@+id/permBatteryBtn" style="@style/PermButton" />
+                    <androidx.appcompat.widget.AppCompatButton android:id="@+id/permBatteryBtn" style="@style/PermButton" />
                 </LinearLayout>
             </LinearLayout>
 
@@ -141,7 +141,7 @@
                 <TextView style="@style/PermDesc" android:text="Used only when your parent starts remote audio. While active, a notification and the Android mic indicator are always shown." />
                 <LinearLayout style="@style/PermRow">
                     <TextView android:id="@+id/permMicStatus" style="@style/PermStatus" />
-                    <Button android:id="@+id/permMicBtn" style="@style/PermButton" />
+                    <androidx.appcompat.widget.AppCompatButton android:id="@+id/permMicBtn" style="@style/PermButton" />
                 </LinearLayout>
             </LinearLayout>
 
@@ -154,7 +154,7 @@
                 <TextView style="@style/PermDesc" android:text="Used only when your parent starts remote camera. While active, a notification and the Android camera indicator are always shown." />
                 <LinearLayout style="@style/PermRow">
                     <TextView android:id="@+id/permCameraStatus" style="@style/PermStatus" />
-                    <Button android:id="@+id/permCameraBtn" style="@style/PermButton" />
+                    <androidx.appcompat.widget.AppCompatButton android:id="@+id/permCameraBtn" style="@style/PermButton" />
                 </LinearLayout>
             </LinearLayout>
 
@@ -167,7 +167,7 @@
                 <TextView style="@style/PermDesc" android:text="Shows parent messages, protection status and remote-access prompts." />
                 <LinearLayout style="@style/PermRow">
                     <TextView android:id="@+id/permNotifStatus" style="@style/PermStatus" />
-                    <Button android:id="@+id/permNotifBtn" style="@style/PermButton" />
+                    <androidx.appcompat.widget.AppCompatButton android:id="@+id/permNotifBtn" style="@style/PermButton" />
                 </LinearLayout>
             </LinearLayout>
 
@@ -180,7 +180,7 @@
                 <TextView style="@style/PermDesc" android:text="Optional call &amp; SMS monitoring — the parent can view recent calls, messages and safety contacts. Skip if you don\'t want it." />
                 <LinearLayout style="@style/PermRow">
                     <TextView android:id="@+id/permCommsStatus" style="@style/PermStatus" />
-                    <Button android:id="@+id/permCommsBtn" style="@style/PermButton" />
+                    <androidx.appcompat.widget.AppCompatButton android:id="@+id/permCommsBtn" style="@style/PermButton" />
                 </LinearLayout>
             </LinearLayout>
 
@@ -193,7 +193,7 @@
                 <TextView style="@style/PermDesc" android:text="Needed for file and media related features." />
                 <LinearLayout style="@style/PermRow">
                     <TextView android:id="@+id/permStorageStatus" style="@style/PermStatus" />
-                    <Button android:id="@+id/permStorageBtn" style="@style/PermButton" />
+                    <androidx.appcompat.widget.AppCompatButton android:id="@+id/permStorageBtn" style="@style/PermButton" />
                 </LinearLayout>
             </LinearLayout>
 
@@ -206,7 +206,7 @@
                 <TextView style="@style/PermDesc" android:text="Allows the protection wizard to install app updates without reinstalling from scratch." />
                 <LinearLayout style="@style/PermRow">
                     <TextView android:id="@+id/permInstallStatus" style="@style/PermStatus" />
-                    <Button android:id="@+id/permInstallBtn" style="@style/PermButton" />
+                    <androidx.appcompat.widget.AppCompatButton android:id="@+id/permInstallBtn" style="@style/PermButton" />
                 </LinearLayout>
             </LinearLayout>
 
@@ -219,13 +219,13 @@
                 <TextView style="@style/PermDesc" android:text="Enables screen lock during bedtime/school mode and makes uninstalling a deliberate step. The parent can approve a short uninstall window remotely." />
                 <LinearLayout style="@style/PermRow">
                     <TextView android:id="@+id/permAdminStatus" style="@style/PermStatus" />
-                    <Button android:id="@+id/permAdminBtn" style="@style/PermButton" />
+                    <androidx.appcompat.widget.AppCompatButton android:id="@+id/permAdminBtn" style="@style/PermButton" />
                 </LinearLayout>
             </LinearLayout>
         </LinearLayout>
     </ScrollView>
 
-    <Button
+    <androidx.appcompat.widget.AppCompatButton
         android:id="@+id/btnContinue"
         android:layout_width="match_parent"
         android:layout_height="56dp"

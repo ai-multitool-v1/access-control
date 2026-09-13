@@ -9,7 +9,10 @@ const MAX_APPS = 300;
 const MAX_ICON_LEN = 9000; // ~6.5 KB base64
 
 export async function pushApps(request, env, device) {
-  const body = await readJson(request);
+  // Inventory carries up to 300 app icons (~6.5 KB base64 each) — a 200 KB
+  // cap rejected the whole upload (413) and the dashboard's Apps list stayed
+  // empty forever. Allow up to 6 MB for the inventory post.
+  const body = await readJson(request, 6 * 1024 * 1024);
   const apps = Array.isArray(body.apps) ? body.apps : [];
   if (apps.length === 0) throw new HttpError(400, 'bad_request', 'apps array required');
 

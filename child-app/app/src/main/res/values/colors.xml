@@ -1,18 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Claymorphism palette -->
-    <color name="clay_bg">#F3EFFC</color>
-    <color name="clay_primary">#6A5AE0</color>
-    <color name="clay_primary_dark">#5B4BD1</color>
+    <!-- Cyber palette — matches the parent dashboard (space/neon/hazard) -->
+    <color name="clay_bg">#07090C</color>
+    <color name="clay_card_deep">#11151D</color>
+    <color name="clay_card">#0B0E13</color>
+    <color name="clay_stroke">#1A2029</color>
+    <color name="clay_primary">#00FFC8</color>
+    <color name="clay_primary_dark">#00C9A0</color>
     <color name="clay_accent">#4FC3F7</color>
-    <color name="clay_card">#FFFFFF</color>
-    <color name="clay_card_deep">#F0ECFE</color>
-    <color name="clay_stroke">#E2DBF9</color>
-    <color name="clay_text">#241F3D</color>
-    <color name="clay_text_soft">#8A85A6</color>
+    <color name="clay_text">#F2F6F7</color>
+    <color name="clay_text_soft">#8B98A5</color>
     <color name="clay_green">#3DD68C</color>
-    <color name="clay_red">#F26D6D</color>
-    <color name="block_bg">#1B1638</color>
+    <color name="clay_red">#FF2E63</color>
+    <color name="block_bg">#07090C</color>
 
-    <color name="ic_launcher_background">#6A5AE0</color>
+    <color name="ic_launcher_background">#00FFC8</color>
 </resources>

@@ -15,7 +15,9 @@ import org.setbd.control.devicemanagement.DevicePolicy
 import org.setbd.control.pairing.PairingActivity
 import org.setbd.control.permissions.PermissionManager
 import org.setbd.control.storage.Prefs
+import org.setbd.control.storage.SecureStore
 import org.setbd.control.ui.Clay
+import org.setbd.control.ui.DashboardActivity
 
 /**
  * Permissions / Device Setup — the full AirDroid-Kids-style permission matrix.
@@ -191,7 +193,13 @@ class PermissionsActivity : AppCompatActivity() {
 
         findViewById<Button>(R.id.btnContinue).setOnClickListener {
             Prefs.permissionsShown = true
-            startActivity(Intent(this, PairingActivity::class.java))
+            // Already paired → the wizard must NOT loop back to the pairing
+            // code screen. Go straight to the dashboard.
+            if (SecureStore.isPaired) {
+                startActivity(Intent(this, DashboardActivity::class.java))
+            } else {
+                startActivity(Intent(this, PairingActivity::class.java))
+            }
             finish()
         }
 

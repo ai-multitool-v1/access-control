@@ -14,6 +14,7 @@ import Location from './pages/Location.jsx';
 import Policies from './pages/Policies.jsx';
 import Notifications from './pages/Notifications.jsx';
 import Settings from './pages/Settings.jsx';
+import Profile from './pages/Profile.jsx';
 import Telegram from './pages/Telegram.jsx';
 import NotFound from './pages/NotFound.jsx';
 
@@ -63,6 +64,7 @@ export default function App() {
         <Route path="/policies" element={<Policies />} />
         <Route path="/notifications" element={<Notifications />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/profile" element={<Profile />} />
         <Route path="/telegram" element={<Telegram />} />
       </Route>
       <Route path="/" element={<Navigate to="/dashboard" replace />} />

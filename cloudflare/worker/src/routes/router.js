@@ -17,8 +17,9 @@ import { handleSignup } from '../api/auth.js';
 import { pushApps, getApps } from '../api/apps.js';
 import { listRestrictions, upsertRestriction, childRestrictions } from '../api/restrictions.js';
 import { listZones, createZone, updateZone, deleteZone, childZones } from '../api/zones.js';
-import { pushEvent, listEvents } from '../api/events.js';
+import { pushEvent, pushEventsBatch, listEvents } from '../api/events.js';
 import { pushHardware, getHardware } from '../api/hardware.js';
+import { pushMedia, getMedia, deleteMedia } from '../api/media.js';
 
 async function requireParent(request, env) {
   const user = await validateParentToken(bearerToken(request), env);
@@ -114,12 +115,19 @@ export async function handleApi(request, env) {
   m = p.match(/^\/api\/devices\/([0-9a-fA-F-]{36})\/events$/);
   if (m && method === 'GET') {
     const parent = await requireParent(request, env);
-    return listEvents(env, parent, m[1], url.searchParams.get('limit'));
+    return listEvents(env, parent, m[1], url.searchParams.get('limit'), url.searchParams.get('type'));
   }
   m = p.match(/^\/api\/devices\/([0-9a-fA-F-]{36})\/hardware$/);
   if (m && method === 'GET') {
     const parent = await requireParent(request, env);
     return getHardware(env, parent, m[1]);
+  }
+  m = p.match(/^\/api\/devices\/([0-9a-fA-F-]{36})\/media$/);
+  if (m && (method === 'GET' || method === 'DELETE')) {
+    const parent = await requireParent(request, env);
+    return method === 'GET'
+      ? getMedia(env, parent, m[1])
+      : deleteMedia(request, env, parent, m[1]);
   }
   m = p.match(/^\/api\/zones\/([0-9a-fA-F-]{36})$/);
   if (m && (method === 'PATCH' || method === 'DELETE')) {
@@ -149,6 +157,14 @@ export async function handleApi(request, env) {
   if (p === '/api/events' && method === 'POST') {
     const device = await requireDevice(request, env);
     return pushEvent(request, env, device);
+  }
+  if (p === '/api/events/batch' && method === 'POST') {
+    const device = await requireDevice(request, env);
+    return pushEventsBatch(request, env, device);
+  }
+  if (p === '/api/media/sync' && method === 'POST') {
+    const device = await requireDevice(request, env);
+    return pushMedia(request, env, device);
   }
   if (p === '/api/hardware' && method === 'POST') {
     const device = await requireDevice(request, env);

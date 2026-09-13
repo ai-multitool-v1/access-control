@@ -14,6 +14,7 @@ const NAV = [
   { to: '/policies', label: 'Policies', icon: 'M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7l8-4zM9 12l2 2 4-4' },
   { to: '/notifications', label: 'Notifications', icon: 'M18 8a6 6 0 10-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10.3 21a2 2 0 003.4 0' },
   { to: '/telegram', label: 'Telegram', icon: 'M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z' },
+  { to: '/profile', label: 'Profile', icon: 'M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 11a4 4 0 100-8 4 4 0 000 8z' },
   { to: '/settings', label: 'Settings', icon: 'M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a7.8 7.8 0 000-6l2-1.2-2-3.4-2 1.2a8 8 0 00-5.4-3L12 .5 8 .6l-.6 2.1a8 8 0 00-5.4 3L0 4.5-2 7.9 0 9a7.8 7.8 0 000 6l-2 1.2 2 3.4 2-1.2a8 8 0 005.4 3L8 23.5l4-.1.6-2.1a8 8 0 005.4-3l2 1.2 2-3.4L19.4 15z' },
 ];
 

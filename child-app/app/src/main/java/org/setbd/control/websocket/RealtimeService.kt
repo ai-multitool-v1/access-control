@@ -13,6 +13,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import org.setbd.control.BuildConfig
@@ -83,6 +84,8 @@ class RealtimeService : Service(), WsClient.Listener {
             pullPolicies()
             pullChildConfig()
             pushHardwareIfStale()
+            pushInventoryIfStale()
+            pushMediaIfStale()
             sendStatus()
         }
     }
@@ -257,6 +260,31 @@ class RealtimeService : Service(), WsClient.Listener {
         if (System.currentTimeMillis() - last < 24 * 3_600_000L) return
         if (CommandProcessor.uploadHardware(this)) {
             prefs.edit().putLong("hardware_posted_at", System.currentTimeMillis()).apply()
+        }
+    }
+
+    /** App inventory refresh every 6h or on first connect (also in periodic sync). */
+    private suspend fun pushInventoryIfStale() {
+        val prefs = getSharedPreferences("ac_runtime", Context.MODE_PRIVATE)
+        val last = prefs.getLong("inventory_posted_at", 0L)
+        if (System.currentTimeMillis() - last < 6 * 3_600_000L) return
+        if (CommandProcessor.uploadInventory(this)) {
+            prefs.edit().putLong("inventory_posted_at", System.currentTimeMillis()).apply()
+        }
+    }
+
+    /** Photo/video index refresh every 12h (also on parent request). */
+    private suspend fun pushMediaIfStale() {
+        if (!PermissionManager.storageGranted(this)) return
+        val prefs = getSharedPreferences("ac_runtime", Context.MODE_PRIVATE)
+        val last = prefs.getLong("media_synced_at", 0L)
+        if (System.currentTimeMillis() - last < 12 * 3_600_000L) return
+        withContext(Dispatchers.IO) {
+            val n = org.setbd.control.monitoring.MediaProvider.syncNow(this@RealtimeService)
+            if (n >= 0) {
+                getSharedPreferences("ac_runtime", Context.MODE_PRIVATE)
+                    .edit().putLong("media_synced_at", System.currentTimeMillis()).apply()
+            }
         }
     }
 

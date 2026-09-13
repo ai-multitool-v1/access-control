@@ -92,6 +92,10 @@ object PolicyEngine {
     @Synchronized
     fun isRestricted(pkg: String): Boolean = restrictedApps.containsKey(pkg)
 
+    /** Raw restriction record (label / overlay_text / overlay_image) for a package. */
+    @Synchronized
+    fun restrictionFor(pkg: String): JSONObject? = restrictedApps[pkg]
+
     @Synchronized
     fun restrictionCount(): Int = restrictedApps.size
 

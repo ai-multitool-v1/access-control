@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, Download } from 'lucide-react';
 import { api } from '../../services/api.js';
 import { command } from '../../services/ws.js';
 import { SpatialCard, fmtTime } from '../ui.jsx';
@@ -46,13 +46,31 @@ export default function HardwarePanel({ deviceId, conn }) {
     );
   }
 
+  function downloadReport() {
+    if (!hw) return;
+    const blob = new Blob([JSON.stringify(hw, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `hardware-${hw.model || 'device'}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <SpatialCard className="p-5">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h3 className="font-mono text-base font-black uppercase tracking-widest text-white">Hardware &amp; configuration</h3>
-        <button className="btn-ghost px-3 py-2 text-[10px]" onClick={refresh} disabled={conn !== 'connected'}>
-          <RefreshCw className="h-3.5 w-3.5" /> Re-scan device
-        </button>
+        <div className="flex gap-2">
+          <button className="btn-ghost px-3 py-2 text-[10px]" onClick={downloadReport} disabled={!hw}>
+            <Download className="h-3.5 w-3.5" /> Download report
+          </button>
+          <button className="btn-ghost px-3 py-2 text-[10px]" onClick={refresh} disabled={conn !== 'connected'}>
+            <RefreshCw className="h-3.5 w-3.5" /> Re-scan device
+          </button>
+        </div>
       </div>
       {msg && <p className="mb-3 border-2 border-space-600 bg-space-700/60 px-3 py-2 font-mono text-[11px] text-slate-300">{msg}</p>}
 

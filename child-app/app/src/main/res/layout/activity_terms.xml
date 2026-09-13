@@ -30,7 +30,7 @@
             android:textSize="14sp" />
     </ScrollView>
 
-    <Button
+    <androidx.appcompat.widget.AppCompatButton
         android:id="@+id/btnAgree"
         android:layout_width="match_parent"
         android:layout_height="56dp"
@@ -38,11 +38,11 @@
         android:background="@drawable/bg_clay_button_primary"
         android:elevation="8dp"
         android:text="I Agree"
-        android:textColor="#FFFFFF"
+        android:textColor="#062A22"
         android:textSize="16sp"
         android:textStyle="bold" />
 
-    <Button
+    <androidx.appcompat.widget.AppCompatButton
         android:id="@+id/btnDecline"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

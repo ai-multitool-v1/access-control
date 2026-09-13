@@ -108,7 +108,7 @@
                 </LinearLayout>
             </GridLayout>
 
-            <Button
+            <androidx.appcompat.widget.AppCompatButton
                 android:id="@+id/btnOpenPermissions"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -126,7 +126,7 @@
         android:layout_marginTop="10dp"
         android:orientation="horizontal">
 
-        <Button
+        <androidx.appcompat.widget.AppCompatButton
             android:id="@+id/btnTelegramSupport"
             android:layout_width="0dp"
             android:layout_height="52dp"
@@ -137,7 +137,7 @@
             android:textColor="@color/clay_primary"
             android:textStyle="bold" />
 
-        <Button
+        <androidx.appcompat.widget.AppCompatButton
             android:id="@+id/btnSettings"
             android:layout_width="0dp"
             android:layout_height="52dp"
@@ -145,7 +145,7 @@
             android:layout_weight="1"
             android:background="@drawable/bg_clay_button_primary"
             android:text="@string/dash_settings"
-            android:textColor="#FFFFFF"
+            android:textColor="#062A22"
             android:textStyle="bold" />
     </LinearLayout>
 </LinearLayout>

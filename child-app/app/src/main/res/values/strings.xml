@@ -23,9 +23,11 @@ Access Control is a parental-control service that helps a parent and child agree
 • App list and daily app usage time (requires Usage Access permission)\n
 • Device status: battery, charging, network, model, Android version\n
 • Location — ONLY while the parent enables location monitoring AND location permission is granted. Status is always visible on the dashboard.\n
-• App restriction policies (screen-time limits, app limits, schedules)\n\n
+• App restriction policies (screen-time limits, app limits, schedules)\n
+• App notifications (app name, title, text) — requires Notification access permission\n
+• A photo/video index (names, albums, dates, tiny thumbnails) — requires Photos permission. Media files themselves are never uploaded.\n\n
 <b>What is NEVER done:</b>\n
-• No keylogging, no reading of passwords or messages\n
+• No keylogging, no reading of message content\n
 • No microphone or camera recording\n
 • No secret screen recording\n
 • No execution of arbitrary remote commands\n\n
@@ -40,6 +42,7 @@ By pressing <b>I Agree</b> you confirm you are the device guardian and accept th
     <string name="pairing_hint">Ask your parent to generate a code in the dashboard, then type it here.</string>
     <string name="pairing_success">Paired! Connecting…</string>
     <string name="pairing_connect">CONNECT</string>
+    <string name="pairing_continue_dash">Open dashboard</string>
 
     <string name="perm_granted">Granted</string>
     <string name="perm_needed">Needed</string>

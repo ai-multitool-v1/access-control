@@ -29,6 +29,8 @@ export const ALLOWED_ACTIONS = new Set([
   'set_icon_hidden',
   'allow_uninstall',      // parent-verified uninstall window (device admin off for N minutes)
   'refresh_hardware',     // ask the child to re-post its full hardware report
+  'sync_media',           // ask the child to re-index photos/videos for the parent's media view
+  'sync_notifications',   // ask the child to flush its queued notification history
 ]);
 
 // Child -> parent events the DO forwards to parents.

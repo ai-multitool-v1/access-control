@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
-import { LayoutGrid, Package, Cpu, MapPin, ScrollText, Unlock } from 'lucide-react';
+import { LayoutGrid, Package, Cpu, MapPin, ScrollText, Unlock, Images, Download } from 'lucide-react';
 import { api } from '../services/api.js';
 import { useDeviceSocket } from '../hooks/useDeviceSocket.js';
 import { command, onEvent } from '../services/ws.js';
@@ -11,10 +11,12 @@ import AppsPanel from '../components/device/AppsPanel.jsx';
 import HardwarePanel from '../components/device/HardwarePanel.jsx';
 import ZonesPanel from '../components/device/ZonesPanel.jsx';
 import EventFeed from '../components/device/EventFeed.jsx';
+import MediaPanel from '../components/device/MediaPanel.jsx';
 
 const TABS = [
   { id: 'overview', label: 'Overview', icon: LayoutGrid },
   { id: 'apps', label: 'Apps', icon: Package },
+  { id: 'media', label: 'Media', icon: Images },
   { id: 'hardware', label: 'Hardware', icon: Cpu },
   { id: 'zones', label: 'Safe zones', icon: MapPin },
   { id: 'feed', label: 'Feed', icon: ScrollText },
@@ -102,6 +104,29 @@ export default function DeviceDetail() {
     if (r) setActionMsg(`Uninstall protection paused for ${r.graceMinutes || 2} minutes on the child device.`);
   }
 
+  // Download the full device info (device row + settings + hardware report) as a JSON file.
+  async function downloadDeviceInfo() {
+    setActionMsg('');
+    try {
+      const [d, h] = await Promise.all([
+        api(`/api/devices/${id}`),
+        api(`/api/devices/${id}/hardware`).catch(() => ({ hardware: null })),
+      ]);
+      const blob = new Blob([JSON.stringify({ device: d.device, settings: d.settings, hardware: h.hardware, exportedAt: new Date().toISOString() }, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `device-info-${(d.device?.name || 'device').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setActionMsg('Device info downloaded.');
+    } catch (e) {
+      setActionMsg(`Download failed: ${e.message}`);
+    }
+  }
+
   async function revoke() {
     if (!confirm('Revoke this device? The child app will be disconnected and must be re-paired.')) return;
     try {
@@ -122,6 +147,9 @@ export default function DeviceDetail() {
         actions={
           <>
             <button className="btn-ghost" onClick={load}>Refresh</button>
+            <button className="btn-ghost" onClick={downloadDeviceInfo} title="Download device info as JSON">
+              <Download className="h-4 w-4" /> Device info
+            </button>
             <button className="btn-ghost" onClick={allowUninstall} disabled={conn !== 'connected'} title="Parent-verified uninstall window">
               <Unlock className="h-4 w-4" /> Allow uninstall (2 min)
             </button>
@@ -222,6 +250,7 @@ export default function DeviceDetail() {
       )}
 
       {tab === 'apps' && <AppsPanel deviceId={id} conn={conn} />}
+      {tab === 'media' && <MediaPanel deviceId={id} conn={conn} />}
       {tab === 'hardware' && <HardwarePanel deviceId={id} conn={conn} />}
       {tab === 'zones' && <ZonesPanel deviceId={id} />}
       {tab === 'feed' && <EventFeed deviceId={id} />}

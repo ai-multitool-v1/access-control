@@ -19,6 +19,9 @@ class MirrorConsentActivity : AppCompatActivity() {
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             val data = result.data
             if (result.resultCode == RESULT_OK && data != null) {
+                // Remember the grant: future mirror requests start silently —
+                // the child allows screen sharing ONCE, not every time.
+                ScreenGrantHolder.store(result.resultCode, data)
                 CaptureService.startScreen(this, data, result.resultCode)
             }
             finish()

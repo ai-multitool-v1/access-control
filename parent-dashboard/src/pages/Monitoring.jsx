@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   MonitorPlay, Headphones, Camera, CameraOff, PhoneOff, Radar, Fingerprint,
-  Users, PhoneCall, Satellite,
+  Users, PhoneCall, Satellite, BatteryCharging, Wifi, Package, Bell,
 } from 'lucide-react';
 import { api } from '../services/api.js';
 import { useDeviceSocket } from '../hooks/useDeviceSocket.js';
@@ -10,6 +10,38 @@ import { command, onEvent } from '../services/ws.js';
 import { PageHeader, SpatialCard, StatusDot, EmptyState, ErrorBanner, FeedTimeline, fmtTime } from '../components/ui.jsx';
 
 const RTC_LABELS = { screen: 'Screen mirroring', ambient: 'One-way audio', camera: 'Remote camera' };
+
+// Friendly GUI presentation for live WS events (no raw JSON anywhere).
+const EVENT_META = {
+  status: { label: 'Device status update', icon: Radar, chip: 'border-neon text-neon bg-neon/10' },
+  child_connected: { label: 'Device came online', icon: Wifi, chip: 'border-neon text-neon bg-neon/10' },
+  child_disconnected: { label: 'Device went offline', icon: Wifi, chip: 'border-slate-500 text-slate-400 bg-slate-500/10' },
+  policy_applied: { label: 'Policies applied on device', icon: Package, chip: 'border-cyan-400 text-cyan-300 bg-cyan-400/10' },
+  sync_done: { label: 'Data sync finished', icon: Package, chip: 'border-cyan-400 text-cyan-300 bg-cyan-400/10' },
+  notification: { label: 'App notification captured', icon: Bell, chip: 'border-amber-400 text-amber-300 bg-amber-400/10' },
+  capture_state: { label: 'Remote access state change', icon: MonitorPlay, chip: 'border-neon text-neon bg-neon/10' },
+  action: { label: 'Parent action', icon: MonitorPlay, chip: 'border-neon text-neon bg-neon/10' },
+  _default: { label: 'Device event', icon: Radar, chip: 'border-neon text-neon bg-neon/10' },
+};
+
+// Human-readable one-liner for the most useful payload fields.
+function eventDetail(event, p) {
+  if (!p || typeof p !== 'object') return '';
+  const parts = [];
+  if (p.appLabel) parts.push(p.appLabel);
+  if (p.packageName) parts.push(p.packageName);
+  if (p.text) parts.push(String(p.text).slice(0, 120));
+  if (p.batteryLevel != null) parts.push(`battery ${p.batteryLevel}%`);
+  if (p.charging) parts.push('charging');
+  if (p.network) parts.push(p.network);
+  if (p.screenTimeMinutes != null) parts.push(`screen ${p.screenTimeMinutes}m`);
+  if (p.state) parts.push(p.state);
+  if (p.count != null) parts.push(`${p.count} item(s)`);
+  if (p.at) parts.push(`at ${p.at}`);
+  if (p.text2) parts.push(String(p.text2).slice(0, 100));
+  if (parts.length === 0 && p.message) parts.push(String(p.message).slice(0, 120));
+  return parts.join(' · ');
+}
 
 export default function Monitoring() {
   const [devices, setDevices] = useState([]);
@@ -38,8 +70,8 @@ export default function Monitoring() {
 
   async function run(label, action, payload = {}) {
     try {
-      const res = await command(action, payload);
-      push(`${label} — ${JSON.stringify(res)}`);
+      await command(action, payload);
+      push(label);
     } catch (e) {
       push(`${label} failed: ${e.message}`);
       rtc.setError(e.message);
@@ -172,17 +204,26 @@ export default function Monitoring() {
                 <p className="py-8 text-center font-mono text-xs uppercase text-slate-600">Waiting for events…</p>
               ) : (
                 <ul className="max-h-[360px] space-y-2 overflow-y-auto pr-1">
-                  {feed.map((e, i) => (
-                    <li key={i} className="border-2 border-space-600 bg-space-700/40 px-3 py-2.5">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-neon">{e.event}</span>
-                        <span className="font-mono text-[10px] text-slate-600">{fmtTime(e.at)}</span>
-                      </div>
-                      {e.payload && Object.keys(e.payload).length > 0 && (
-                        <div className="mt-1 break-all font-mono text-[10px] text-slate-500">{JSON.stringify(e.payload)}</div>
-                      )}
-                    </li>
-                  ))}
+                  {feed.map((e, i) => {
+                    const meta = EVENT_META[e.event] || EVENT_META._default;
+                    const EVIcon = meta.icon;
+                    return (
+                      <li key={i} className="flex items-start gap-3 border-2 border-space-600 bg-space-700/40 px-3 py-2.5">
+                        <span className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center border-2 ${meta.chip}`}>
+                          <EVIcon className="h-3.5 w-3.5" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-baseline justify-between gap-2">
+                            <span className="text-sm font-bold text-slate-100">{meta.label}</span>
+                            <span className="font-mono text-[10px] text-slate-600">{fmtTime(e.at)}</span>
+                          </div>
+                          {eventDetail(e.event, e.payload) && (
+                            <div className="mt-0.5 font-mono text-[11px] text-neon-dim">{eventDetail(e.event, e.payload)}</div>
+                          )}
+                        </div>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </SpatialCard>

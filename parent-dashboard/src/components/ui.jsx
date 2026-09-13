@@ -1,6 +1,6 @@
 import {
   Package, AlertTriangle, ShieldAlert, MapPin, Smartphone, Bell,
-  ShieldCheck, Activity, Unlock, Cpu, RefreshCw, ScrollText,
+  ShieldCheck, Activity, Unlock, Cpu, RefreshCw, ScrollText, Images,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -179,6 +179,7 @@ export function DeviceQuickLinks({ deviceId }) {
   const navigate = useNavigate();
   const chips = [
     { id: 'apps', label: 'Apps + limits', icon: Package },
+    { id: 'media', label: 'Media', icon: Images },
     { id: 'hardware', label: 'Hardware', icon: Cpu },
     { id: 'zones', label: 'Safe zones', icon: MapPin },
     { id: 'feed', label: 'Feed', icon: ScrollText },

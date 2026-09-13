@@ -38,6 +38,19 @@ class PairingActivity : AppCompatActivity() {
 
         Clay.applyPressAnimation(button)
 
+        // ALREADY PAIRED? Never show the code input a second time — jump
+        // straight to the dashboard. Pairing credentials live until the
+        // parent unpairs the device.
+        if (SecureStore.isPaired) {
+            input.visibility = View.GONE
+            button.text = getString(R.string.pairing_continue_dash)
+            button.setOnClickListener {
+                startActivity(Intent(this, DashboardActivity::class.java))
+                finish()
+            }
+            return
+        }
+
         button.setOnClickListener {
             val code = input.text.toString()
             error.visibility = View.GONE

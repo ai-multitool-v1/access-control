@@ -20,6 +20,36 @@ import androidx.core.content.ContextCompat
  *    share state is always visible via the CaptureService notification and
  *    the Android mic/camera indicators.
  */
+/**
+ * Holds the child's MediaProjection consent grant (resultCode + result Intent)
+ * for the lifetime of the app process. One ALLOW is enough: later screen-mirror
+ * requests reuse this grant instead of prompting the child again. If Android
+ * invalidates it (reboot, user revoke), the next start fails, the holder is
+ * cleared and the consent prompt is shown once more — automatically.
+ */
+object ScreenGrantHolder {
+    @Volatile private var data: Intent? = null
+    @Volatile var resultCode: Int = 0
+        private set
+
+    val available: Boolean get() = data != null
+
+    fun store(code: Int, intent: Intent) {
+        resultCode = code
+        data = intent
+    }
+
+    fun peek(): Pair<Int, Intent>? {
+        val d = data ?: return null
+        return resultCode to d
+    }
+
+    fun clear() {
+        data = null
+        resultCode = 0
+    }
+}
+
 object RtcStarter {
 
     private fun isAppForeground(ctx: Context): Boolean {
@@ -35,6 +65,13 @@ object RtcStarter {
         // grant the same MediaProjection consent again (one allow is enough).
         if (WebRtcCore.isLive(WebRtcCore.KIND_SCREEN)) {
             return JSONObject().put("alreadyLive", true)
+        }
+        // Reuse the stored consent grant — no repeated allow prompts, no crash
+        // loop from stacked consent dialogs.
+        val grant = ScreenGrantHolder.peek()
+        if (grant != null) {
+            CaptureService.startScreen(ctx, grant.second, grant.first)
+            return JSONObject().put("starting", true).put("reusedGrant", true)
         }
         NotificationHelper.showCaptureRequest(ctx, WebRtcCore.KIND_SCREEN, null)
         return JSONObject().put("needsConsent", true).put("notified", true)

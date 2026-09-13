@@ -243,6 +243,7 @@ object WebRtcCore {
             }, MediaConstraints())
         } catch (e: Exception) {
             Log.w(TAG, "start failed", e)
+            if (kind == KIND_SCREEN) ScreenGrantHolder.clear() // stale projection grant — re-ask next time
             emitError(kind, e.message ?: "start_failed")
             teardown(notifyStopped = true)
         }

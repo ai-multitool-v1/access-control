@@ -35,7 +35,7 @@
             <LinearLayout style="@style/PermCard">
                 <TextView style="@style/PermTitle" android:text="App visibility" />
                 <TextView style="@style/PermDesc" android:text="Hiding the icon keeps protection running. Reopen by dialing *#*#9999#*#* or from Settings." />
-                <Button
+                <androidx.appcompat.widget.AppCompatButton
                     android:id="@+id/btnToggleIcon"
                     android:layout_width="match_parent"
                     android:layout_height="46dp"
@@ -49,7 +49,7 @@
             <LinearLayout style="@style/PermCard">
                 <TextView style="@style/PermTitle" android:text="Uninstall protection" />
                 <TextView style="@style/PermDesc" android:text="Device admin (optional): screen lock during schedules and deliberate uninstall. Fully disclosed and reversible." />
-                <Button
+                <androidx.appcompat.widget.AppCompatButton
                     android:id="@+id/btnToggleAdmin"
                     android:layout_width="match_parent"
                     android:layout_height="46dp"
@@ -62,7 +62,7 @@
 
             <LinearLayout style="@style/PermCard">
                 <TextView style="@style/PermTitle" android:text="Support &amp; status" />
-                <Button
+                <androidx.appcompat.widget.AppCompatButton
                     android:id="@+id/btnSettingsPermissions"
                     android:layout_width="match_parent"
                     android:layout_height="46dp"
@@ -71,7 +71,7 @@
                     android:text="@string/settings_permissions"
                     android:textColor="@color/clay_primary"
                     android:textStyle="bold" />
-                <Button
+                <androidx.appcompat.widget.AppCompatButton
                     android:id="@+id/btnDiagnostics"
                     android:layout_width="match_parent"
                     android:layout_height="46dp"
