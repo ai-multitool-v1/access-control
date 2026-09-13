@@ -38,7 +38,19 @@ object Http {
         client.newCall(request).execute().use { res ->
             val text = res.body?.string().orEmpty()
             if (!res.isSuccessful) {
-                throw HttpException(res.code, "http_${res.code}", text.ifBlank { "HTTP ${res.code}" })
+                // Server errors are JSON: {"error":{"code":"invalid_code","message":"..."}}
+                // Surface the real code so callers can map it to friendly messages.
+                var code = "http_${res.code}"
+                var message = text.ifBlank { "HTTP ${res.code}" }
+                try {
+                    val errObj = org.json.JSONObject(text).optJSONObject("error")
+                    if (errObj != null) {
+                        errObj.optString("code").takeIf { it.isNotEmpty() }?.let { code = it }
+                        errObj.optString("message").takeIf { it.isNotEmpty() }?.let { message = it }
+                    }
+                } catch (_: Exception) {
+                }
+                throw HttpException(res.code, code, message)
             }
             return text
         }

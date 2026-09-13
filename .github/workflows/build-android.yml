@@ -35,9 +35,16 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
 
       - name: Build debug APK
+        env:
+          AC_API_BASE: ${{ vars.AC_API_BASE }}
+          AC_WS_BASE: ${{ vars.AC_WS_BASE }}
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace
+          ARGS=""
+          if [ -n "$AC_API_BASE" ]; then ARGS="$ARGS -PAC_API_BASE=$AC_API_BASE"; fi
+          if [ -n "$AC_WS_BASE" ]; then ARGS="$ARGS -PAC_WS_BASE=$AC_WS_BASE"; fi
+          ./gradlew assembleDebug $ARGS --stacktrace
+          echo "APK baked with API_BASE=${AC_API_BASE:-https://access-control-api.ai-multitools.workers.dev}"
 
       - name: Run unit tests
         run: ./gradlew testDebugUnitTest --stacktrace || echo "no tests yet"
