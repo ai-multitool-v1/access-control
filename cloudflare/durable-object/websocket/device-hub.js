@@ -3,7 +3,7 @@
 // commands/responses/events, enforces the command allowlist, heartbeats,
 // timeouts, connection state persistence and offline wake-ups.
 
-import { ALLOWED_ACTIONS, CHILD_EVENTS, RTC_KINDS, RTC_ACTIONS_PARENT_TO_CHILD, RTC_ACTIONS_CHILD_TO_PARENT } from '../../worker/src/protocol.js';
+import { ALLOWED_ACTIONS, CHILD_EVENTS, SERVER_CHILD_EVENTS, RTC_KINDS, RTC_ACTIONS_PARENT_TO_CHILD, RTC_ACTIONS_CHILD_TO_PARENT } from '../../worker/src/protocol.js';
 import { notifyDeviceEvent, pushWake } from '../../worker/src/notify/events.js';
 
 const COMMAND_TIMEOUT_MS = 15_000;
@@ -51,7 +51,7 @@ export class DeviceHub {
 
     if (url.pathname === '/server-event') {
       const msg = safeParse(await request.text());
-      if (msg && msg.type === 'event' && CHILD_EVENTS.has(msg.event)) {
+      if (msg && msg.type === 'event' && SERVER_CHILD_EVENTS.has(msg.event)) {
         this.sendToChild({ type: 'event', event: msg.event, payload: msg.payload || {} });
       }
       return new Response('ok');

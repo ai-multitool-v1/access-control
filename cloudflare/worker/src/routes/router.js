@@ -13,6 +13,12 @@ import { getUsage, pushUsage } from '../api/usage.js';
 import { getLocations, pushLocation } from '../api/location.js';
 import { getNotificationSettings, saveNotificationSettings, sendTestPush } from '../api/notifications.js';
 import { getTelegramSettings, saveTelegramSettings, testTelegram } from '../api/telegram.js';
+import { handleSignup } from '../api/auth.js';
+import { pushApps, getApps } from '../api/apps.js';
+import { listRestrictions, upsertRestriction, childRestrictions } from '../api/restrictions.js';
+import { listZones, createZone, updateZone, deleteZone, childZones } from '../api/zones.js';
+import { pushEvent, listEvents } from '../api/events.js';
+import { pushHardware, getHardware } from '../api/hardware.js';
 
 async function requireParent(request, env) {
   const user = await validateParentToken(bearerToken(request), env);
@@ -30,6 +36,11 @@ export async function handleApi(request, env) {
   const url = new URL(request.url);
   const p = url.pathname.replace(/\/+$/, '');
   const method = request.method;
+
+  // ---- auth (signup needs NO email verification) ----
+  if (p === '/api/auth/signup' && method === 'POST') {
+    return handleSignup(request, env);
+  }
 
   // ---- pairing ----
   if (p === '/api/pairing/generate' && method === 'POST') {
@@ -81,6 +92,42 @@ export async function handleApi(request, env) {
     const parent = await requireParent(request, env);
     return deviceAudit(env, parent, m[1]);
   }
+  m = p.match(/^\/api\/devices\/([0-9a-fA-F-]{36})\/apps$/);
+  if (m && method === 'GET') {
+    const parent = await requireParent(request, env);
+    return getApps(env, parent, m[1]);
+  }
+  m = p.match(/^\/api\/devices\/([0-9a-fA-F-]{36})\/restrictions$/);
+  if (m && (method === 'GET' || method === 'POST')) {
+    const parent = await requireParent(request, env);
+    return method === 'GET'
+      ? listRestrictions(env, parent, m[1])
+      : upsertRestriction(request, env, parent, m[1]);
+  }
+  m = p.match(/^\/api\/devices\/([0-9a-fA-F-]{36})\/zones$/);
+  if (m && (method === 'GET' || method === 'POST')) {
+    const parent = await requireParent(request, env);
+    return method === 'GET'
+      ? listZones(env, parent, m[1])
+      : createZone(request, env, parent, m[1]);
+  }
+  m = p.match(/^\/api\/devices\/([0-9a-fA-F-]{36})\/events$/);
+  if (m && method === 'GET') {
+    const parent = await requireParent(request, env);
+    return listEvents(env, parent, m[1], url.searchParams.get('limit'));
+  }
+  m = p.match(/^\/api\/devices\/([0-9a-fA-F-]{36})\/hardware$/);
+  if (m && method === 'GET') {
+    const parent = await requireParent(request, env);
+    return getHardware(env, parent, m[1]);
+  }
+  m = p.match(/^\/api\/zones\/([0-9a-fA-F-]{36})$/);
+  if (m && (method === 'PATCH' || method === 'DELETE')) {
+    const parent = await requireParent(request, env);
+    return method === 'PATCH'
+      ? updateZone(request, env, parent, m[1])
+      : deleteZone(env, parent, m[1]);
+  }
 
   // ---- child endpoints (device token auth) ----
   if (p === '/api/usage/batch' && method === 'POST') {
@@ -94,6 +141,26 @@ export async function handleApi(request, env) {
   if (p === '/api/devices/fcm' && method === 'POST') {
     const device = await requireDevice(request, env);
     return registerFcm(request, env, device);
+  }
+  if (p === '/api/apps/sync' && method === 'POST') {
+    const device = await requireDevice(request, env);
+    return pushApps(request, env, device);
+  }
+  if (p === '/api/events' && method === 'POST') {
+    const device = await requireDevice(request, env);
+    return pushEvent(request, env, device);
+  }
+  if (p === '/api/hardware' && method === 'POST') {
+    const device = await requireDevice(request, env);
+    return pushHardware(request, env, device);
+  }
+  if (p === '/api/child/restrictions' && method === 'GET') {
+    const device = await requireDevice(request, env);
+    return childRestrictions(env, device);
+  }
+  if (p === '/api/child/zones' && method === 'GET') {
+    const device = await requireDevice(request, env);
+    return childZones(env, device);
   }
   if (p === '/api/child/bootstrap' && method === 'GET') {
     const device = await requireDevice(request, env);

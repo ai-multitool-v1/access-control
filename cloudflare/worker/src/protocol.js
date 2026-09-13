@@ -27,6 +27,8 @@ export const ALLOWED_ACTIONS = new Set([
   'get_sms',
   // Device management
   'set_icon_hidden',
+  'allow_uninstall',      // parent-verified uninstall window (device admin off for N minutes)
+  'refresh_hardware',     // ask the child to re-post its full hardware report
 ]);
 
 // Child -> parent events the DO forwards to parents.
@@ -37,6 +39,12 @@ export const CHILD_EVENTS = new Set([
   'sync_done',
   'notification',
   'capture_state',
+]);
+
+// Server -> child events (relayed through the DO /server-event route).
+export const SERVER_CHILD_EVENTS = new Set([
+  'policies_updated',
+  'zone_alert',     // SOS overlay: the child left every active safe zone
 ]);
 
 // Structured WebRTC signaling (SDP offers/answers + ICE candidates).

@@ -57,6 +57,26 @@ export async function pushWake(env, deviceId) {
   }
 }
 
+// Critical events (SOS, safe-zone exit, ...) always try Telegram + FCM.
+export async function notifyCriticalEvent(env, parentId, deviceId, type, title) {
+  const name = await deviceName(env, deviceId);
+  const label = type === 'zone_exit' ? 'SAFE ZONE EXIT' : type === 'sos' ? 'SOS ALERT' : 'ALERT';
+  const text = `🚨 <b>Access Control — ${label}</b>\n<b>${escapeHtml(name)}</b>\n${escapeHtml(title)}`;
+  const results = [await sendTelegramTo(env, parentId, text).catch(() => ({}))];
+  try {
+    const rows = await sbRest(env, `devices?id=eq.${deviceId}&select=fcm_token`);
+    const token = rows[0] && rows[0].fcm_token;
+    if (token) {
+      results.push(await sendPush(env, token, {
+        title: `Access Control — ${label}`,
+        body: title,
+        data: { type: 'critical', eventType: type },
+      }));
+    }
+  } catch { /* best effort */ }
+  return { ok: true, results };
+}
+
 function escapeHtml(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
