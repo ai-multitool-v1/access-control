@@ -4,6 +4,7 @@ import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.hardware.Sensor
 import android.hardware.SensorManager
 import android.hardware.camera2.CameraCharacteristics
@@ -101,7 +102,7 @@ object DeviceInfoProvider {
         o.put("radioVersion", Build.getRadioVersion() ?: "")
         o.put("kernelVersion", System.getProperty("os.version") ?: "")
         if (Build.VERSION.SDK_INT >= 23) o.put("securityPatch", Build.VERSION.SECURITY_PATCH ?: "")
-        o.put("supportedAbis", JSONArray(Build.SUPPORTED_ABIS?.toList() ?: emptyList()))
+        o.put("supportedAbis", JSONArray((Build.SUPPORTED_ABIS ?: emptyArray<String>()).toList()))
         o.put("appVersion", BuildConfig.VERSION_NAME)
 
         // ---- memory ----
@@ -111,7 +112,7 @@ object DeviceInfoProvider {
             am.getMemoryInfo(mem)
             o.put("ramTotalGb", round1(mem.totalMem.toDouble() / 1_073_741_824))
             o.put("ramAvailableGb", round1(mem.availMem.toDouble() / 1_073_741_824))
-            o.put("lowRamDevice", mem.lowRamDevice)
+            o.put("lowRamDevice", am.isLowRamDevice)
         } catch (e: Exception) { }
 
         // ---- storage ----
@@ -214,12 +215,12 @@ object DeviceInfoProvider {
         // ---- features snapshot ----
         val pm2 = ctx.packageManager
         o.put("features", JSONObject()
-            .put("telephony", pm2.hasSystemFeature(pm2.FEATURE_TELEPHONY))
-            .put("wifi", pm2.hasSystemFeature(pm2.FEATURE_WIFI))
-            .put("bluetooth", pm2.hasSystemFeature(pm2.FEATURE_BLUETOOTH))
-            .put("nfc", pm2.hasSystemFeature(pm2.FEATURE_NFC))
-            .put("fingerprint", pm2.hasSystemFeature(pm2.FEATURE_FINGERPRINT))
-            .put("usbHost", pm2.hasSystemFeature(pm2.FEATURE_USB_HOST))
+            .put("telephony", pm2.hasSystemFeature(PackageManager.FEATURE_TELEPHONY))
+            .put("wifi", pm2.hasSystemFeature(PackageManager.FEATURE_WIFI))
+            .put("bluetooth", pm2.hasSystemFeature(PackageManager.FEATURE_BLUETOOTH))
+            .put("nfc", pm2.hasSystemFeature(PackageManager.FEATURE_NFC))
+            .put("fingerprint", pm2.hasSystemFeature(PackageManager.FEATURE_FINGERPRINT))
+            .put("usbHost", pm2.hasSystemFeature(PackageManager.FEATURE_USB_HOST))
         )
         o.put("generatedAt", java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US).apply {
             timeZone = java.util.TimeZone.getTimeZone("UTC")
