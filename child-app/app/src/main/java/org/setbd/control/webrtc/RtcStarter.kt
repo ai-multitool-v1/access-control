@@ -31,6 +31,11 @@ object RtcStarter {
     }
 
     fun requestScreen(ctx: Context): JSONObject {
+        // Already mirroring? Tell the parent instead of asking the child to
+        // grant the same MediaProjection consent again (one allow is enough).
+        if (WebRtcCore.isLive(WebRtcCore.KIND_SCREEN)) {
+            return JSONObject().put("alreadyLive", true)
+        }
         NotificationHelper.showCaptureRequest(ctx, WebRtcCore.KIND_SCREEN, null)
         return JSONObject().put("needsConsent", true).put("notified", true)
     }
@@ -40,6 +45,9 @@ object RtcStarter {
             android.content.pm.PackageManager.PERMISSION_GRANTED
         if (!granted) {
             return JSONObject().put("needsPermission", true)
+        }
+        if (WebRtcCore.isLive(WebRtcCore.KIND_AMBIENT)) {
+            return JSONObject().put("alreadyLive", true)
         }
         if (isAppForeground(ctx)) {
             CaptureService.startAmbient(ctx)
@@ -54,6 +62,9 @@ object RtcStarter {
             android.content.pm.PackageManager.PERMISSION_GRANTED
         if (!granted) {
             return JSONObject().put("needsPermission", true)
+        }
+        if (WebRtcCore.isLive(WebRtcCore.KIND_CAMERA)) {
+            return JSONObject().put("alreadyLive", true)
         }
         if (isAppForeground(ctx)) {
             CaptureService.startCamera(ctx, facing)

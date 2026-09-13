@@ -194,6 +194,22 @@ class PermissionsActivity : AppCompatActivity() {
             startActivity(Intent(this, PairingActivity::class.java))
             finish()
         }
+
+        // Wire EVERY row's action button — without this the Grant buttons were
+        // dead (no response on tap). Each press fires the real system intent
+        // and gives instant feedback, then the row re-validates on return.
+        for (r in rows) {
+            r.button.setOnClickListener {
+                val already = runCatching { r.check() }.getOrDefault(false)
+                if (already) {
+                    Toast.makeText(this, R.string.perm_already_granted, Toast.LENGTH_SHORT).show()
+                    refresh()
+                } else {
+                    Toast.makeText(this, R.string.perm_opening_settings, Toast.LENGTH_SHORT).show()
+                    runCatching { r.request() }
+                }
+            }
+        }
     }
 
     override fun onResume() {
@@ -202,8 +218,10 @@ class PermissionsActivity : AppCompatActivity() {
     }
 
     private fun refresh() {
+        var granted = 0
         for (r in rows) {
             val ok = runCatching { r.check() }.getOrDefault(false)
+            if (ok) granted++
             r.statusView.text = when {
                 ok -> getString(R.string.perm_granted)
                 r.optional -> getString(R.string.perm_optional)
@@ -219,9 +237,23 @@ class PermissionsActivity : AppCompatActivity() {
                     }
                 )
             )
+            // SVG status icon (check / cross) inline before the status text.
+            val iconRes = if (ok) R.drawable.ic_status_ok else R.drawable.ic_status_no
+            val tint = ContextCompat.getColor(
+                this,
+                if (ok) R.color.clay_green else if (r.optional) R.color.clay_text_soft else R.color.clay_red
+            )
+            val icon = androidx.core.content.ContextCompat.getDrawable(this, iconRes)?.mutate()
+            icon?.setTint(tint)
+            icon?.setBounds(0, 0, icon?.intrinsicWidth ?: 0, icon?.intrinsicHeight ?: 0)
+            r.statusView.setCompoundDrawablesRelative(icon, null, null, null)
+            r.statusView.compoundDrawablePadding =
+                (6 * resources.displayMetrics.density).toInt()
             r.button.text = if (ok) getString(R.string.perm_granted_btn) else getString(R.string.perm_grant_btn)
             r.button.isEnabled = !ok
             Clay.applyPressAnimation(r.button)
         }
+        findViewById<TextView>(R.id.permSummary).text =
+            getString(R.string.perm_summary_format, granted, rows.size)
     }
 }

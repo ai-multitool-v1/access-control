@@ -151,6 +151,35 @@ class RealtimeService : Service(), WsClient.Listener {
         }
     }
 
+    override fun onWsRevoked() {
+        // Parent pressed Revoke/Unpair on the dashboard: the socket was closed
+        // with 4000 device_revoked. Wipe the pairing credentials, stop every
+        // service and drop the child back on the pairing screen — the device
+        // is now visibly UNPAIRED instead of lingering "offline".
+        RealtimeState.setConnected(false)
+        try {
+            NotificationHelper.showAlert(
+                this,
+                getString(org.setbd.control.R.string.unpaired_title),
+                getString(org.setbd.control.R.string.unpaired_body)
+            )
+        } catch (_: Exception) {
+        }
+        runCatching {
+            // Stop the enforcement service too, then clear credentials.
+            stopService(Intent(this, org.setbd.control.controls.PolicyEnforcerService::class.java))
+            org.setbd.control.storage.SecureStore.clear()
+            org.setbd.control.storage.Prefs.iconHidden = false
+            org.setbd.control.ui.IconHider.apply(this)
+        }
+        runCatching {
+            val i = Intent(this, org.setbd.control.pairing.PairingActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            startActivity(i)
+        }
+        stopSelf()
+    }
+
     // ---- periodic status to parents (batched: one small event per minute) ----
 
     private fun startStatusLoop() {

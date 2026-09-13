@@ -26,7 +26,7 @@ export default function Telegram() {
       await api('/api/telegram/settings', { method: 'POST', body: { botToken, chatId } });
       setConfigured(true);
       setBotToken('');
-      setMsg('✅ Saved. The token is stored server-side only — it never appears in this page again.');
+      setMsg('Saved. The token is stored server-side only — it never appears in this page again.');
     } catch (err) {
       setError(err.message);
     }
@@ -36,7 +36,7 @@ export default function Telegram() {
     setMsg(''); setError('');
     try {
       const r = await api('/api/telegram/test', { method: 'POST', body: {} });
-      setMsg(r.ok ? `✅ ${r.message}` : `⚠️ ${r.message}`);
+      setMsg(r.ok ? String(r.message) : `Failed: ${r.message}`);
     } catch (err) {
       setError(err.message);
     }
@@ -55,7 +55,7 @@ export default function Telegram() {
           ) : (
             <form onSubmit={save} className="space-y-4">
               <div>
-                <label className="label-text">Bot token {configured && <span className="text-accent-green">(saved ✓)</span>}</label>
+                <label className="label-text">Bot token {configured && <span className="text-accent-green">(saved)</span>}</label>
                 <input className="input-field font-mono" value={botToken} onChange={(e) => setBotToken(e.target.value)}
                   placeholder={configured ? 'Leave blank to keep current token' : '123456789:AA…your-bot-token'} />
               </div>

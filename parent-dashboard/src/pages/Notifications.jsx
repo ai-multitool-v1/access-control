@@ -18,7 +18,7 @@ export default function Notifications() {
     setMsg('');
     try {
       await api('/api/notifications/settings', { method: 'POST', body: next });
-      setMsg('✅ Saved');
+      setMsg('Saved successfully');
     } catch (e) {
       setError(e.message);
     }
@@ -28,7 +28,7 @@ export default function Notifications() {
     setMsg(''); setError('');
     try {
       const r = await api('/api/notifications/test', { method: 'POST', body: devices[0] ? { deviceId: devices[0].id } : {} });
-      setMsg(r.ok ? '✅ Test push sent (requires Firebase configured in the child app)' : `⚠️ ${r.message}`);
+      setMsg(r.ok ? 'Test push sent (requires Firebase configured in the child app)' : `Failed: ${r.message}`);
     } catch (e) {
       setError(e.message);
     }

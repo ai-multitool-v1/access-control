@@ -7,6 +7,15 @@
     <string name="splash_tagline">NEXT-GEN FAMILY PROTECTION SYSTEM</string>
     <string name="splash_developer">DEVELOPED BY ASIF KHAN</string>
 
+    <!-- permission setup: live status -->
+    <string name="perm_summary_format">%1$d of %2$d permissions allowed</string>
+    <string name="perm_opening_settings">Opening system settings…</string>
+    <string name="perm_already_granted">Already allowed</string>
+
+    <!-- unpaired by parent -->
+    <string name="unpaired_title">Device unpaired</string>
+    <string name="unpaired_body">Your parent removed this device. Enter a new pairing code to connect again.</string>
+
     <string name="terms_title">Terms &amp; Conditions</string>
     <string name="terms_body">
 Access Control is a parental-control service that helps a parent and child agree on safe device use. This device will be monitored ONLY after you complete pairing with a parent account and grant the listed permissions.\n\n

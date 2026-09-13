@@ -59,10 +59,21 @@ class CaptureService : Service() {
     }
 
     private fun goForeground(notification: Notification, type: Int) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(NotificationHelper.CAPTURE_NOTIFICATION_ID, notification, type)
-        } else {
-            startForeground(NotificationHelper.CAPTURE_NOTIFICATION_ID, notification)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(NotificationHelper.CAPTURE_NOTIFICATION_ID, notification, type)
+            } else {
+                startForeground(NotificationHelper.CAPTURE_NOTIFICATION_ID, notification)
+            }
+        } catch (e: Exception) {
+            // Android 12+ can throw ForegroundServiceStartNotAllowedException /
+            // SecurityException here (FGS type quota, background start, OEM
+            // quirks). NEVER crash the protection app for a capture request —
+            // report the failure and stop quietly.
+            android.util.Log.w("CaptureService", "startForeground failed", e)
+            runCatching { WebRtcCore.stopAll() }
+            runCatching { stopForeground(true) }
+            stopSelf()
         }
     }
 

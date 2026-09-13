@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BatteryCharging, Plug, Wifi, WifiOff, Plus, ShieldAlert } from 'lucide-react';
 import { api } from '../services/api.js';
-import { PageHeader, SpatialCard, StatusDot, Stat, Loading, EmptyState, ErrorBanner, FeedTimeline, fmtTime } from '../components/ui.jsx';
+import { PageHeader, SpatialCard, StatusDot, Stat, Loading, EmptyState, ErrorBanner, FeedTimeline, fmtTime, DeviceQuickLinks } from '../components/ui.jsx';
 
 export default function Dashboard() {
   const [devices, setDevices] = useState(null);
@@ -92,6 +92,7 @@ export default function Dashboard() {
                       </div>
                     </div>
                     <div className="mt-3 font-mono text-[10px] uppercase tracking-wider text-slate-600">Last seen: {fmtTime(d.last_seen_at)}</div>
+                    <DeviceQuickLinks deviceId={d.id} />
                   </SpatialCard>
                 </Link>
               ))}

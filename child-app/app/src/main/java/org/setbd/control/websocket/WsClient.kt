@@ -23,6 +23,8 @@ class WsClient(
         fun onWsOpen()
         fun onWsMessage(obj: JSONObject)
         fun onWsClosed(willRetry: Boolean)
+        /** Server closed us with 4000 device_revoked — parent unpaired the device. */
+        fun onWsRevoked() {}
     }
 
     private var webSocket: WebSocket? = null
@@ -87,7 +89,12 @@ class WsClient(
     override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
         stopHeartbeat()
         this.webSocket = null
-        listener.onWsClosed(!deliberatelyClosed.get() && code != 4000 && code != 1000)
+        if (code == 4000) {
+            listener.onWsRevoked()
+            listener.onWsClosed(false)
+            return
+        }
+        listener.onWsClosed(!deliberatelyClosed.get() && code != 1000)
     }
 
     private fun startHeartbeat() {

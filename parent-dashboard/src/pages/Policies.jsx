@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../services/api.js';
-import { PageHeader, SpatialCard, EmptyState, ErrorBanner, Toggle, fmtMinutes } from '../components/ui.jsx';
+import { PageHeader, SpatialCard, EmptyState, ErrorBanner, Toggle, fmtMinutes, EmptyIcon } from '../components/ui.jsx';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -43,7 +43,7 @@ export default function Policies() {
       await api(`/api/devices/${deviceId}/policies`, { method: 'POST', body: { type, label, payload, enabled: true } });
       const p = await api(`/api/devices/${deviceId}/policies`);
       setPolicies(p.policies || []);
-      setMsg('✅ Policy saved and pushed to the child device (if online)');
+      setMsg('Policy saved and pushed to the child device (if online)');
     } catch (e) {
       setError(e.message);
     }
@@ -76,7 +76,7 @@ export default function Policies() {
       {msg && <p className="animate-fade-up mb-4 rounded-xl border border-accent-green/30 bg-accent-green/10 px-4 py-3 text-sm text-accent-green">{msg}</p>}
 
       {devices.length === 0 ? (
-        <EmptyState icon="🧩" title="No devices" hint="Pair a device to add policies." />
+        <EmptyState icon={<EmptyIcon />} title="No devices" hint="Pair a device to add policies." />
       ) : (
         <>
           <div className="mb-6">

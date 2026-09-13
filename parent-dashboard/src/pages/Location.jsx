@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../services/api.js';
-import { PageHeader, SpatialCard, EmptyState, ErrorBanner, Toggle, fmtTime } from '../components/ui.jsx';
+import { PageHeader, SpatialCard, EmptyState, ErrorBanner, Toggle, fmtTime, EmptyIcon } from '../components/ui.jsx';
 
 function osmEmbed(lat, lng) {
   const d = 0.008;
@@ -48,7 +48,7 @@ export default function Location() {
       <ErrorBanner message={error} />
 
       {devices.length === 0 ? (
-        <EmptyState icon="📍" title="No devices" hint="Pair a device to see location." />
+        <EmptyState icon={<EmptyIcon />} title="No devices" hint="Pair a device to see location." />
       ) : (
         <div className="grid gap-6 lg:grid-cols-3">
           <SpatialCard className="p-5">

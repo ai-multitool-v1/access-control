@@ -1,7 +1,8 @@
 import {
   Package, AlertTriangle, ShieldAlert, MapPin, Smartphone, Bell,
-  ShieldCheck, Activity, Unlock, Cpu, RefreshCw,
+  ShieldCheck, Activity, Unlock, Cpu, RefreshCw, ScrollText,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 // ---------- shared SVG icon (no emoji anywhere) ----------
 
@@ -164,6 +165,39 @@ export function BarList({ items, unit = 'm' }) {
           </div>
           {i.sublabel && <div className="mt-0.5 font-mono text-[10px] text-slate-600">{i.sublabel}</div>}
         </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Quick-jump chips for device cards: Apps / Hardware / Safe zones / Feed.
+ * Makes the per-device feature tabs discoverable straight from the
+ * Dashboard & Devices pages via deep links (?tab=...).
+ */
+export function DeviceQuickLinks({ deviceId }) {
+  const navigate = useNavigate();
+  const chips = [
+    { id: 'apps', label: 'Apps + limits', icon: Package },
+    { id: 'hardware', label: 'Hardware', icon: Cpu },
+    { id: 'zones', label: 'Safe zones', icon: MapPin },
+    { id: 'feed', label: 'Feed', icon: ScrollText },
+  ];
+  return (
+    <div className="mt-3 flex flex-wrap gap-1.5">
+      {chips.map((c) => (
+        <span
+          key={c.id}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            navigate(`/devices/${deviceId}?tab=${c.id}`);
+          }}
+          className="cursor-pointer border border-space-600 bg-space-700/60 px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-neon-dim transition hover:border-neon hover:text-neon"
+        >
+          <c.icon className="mr-1 inline h-3 w-3" />
+          {c.label}
+        </span>
       ))}
     </div>
   );

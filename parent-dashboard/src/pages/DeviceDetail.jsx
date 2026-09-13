@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { LayoutGrid, Package, Cpu, MapPin, ScrollText, Unlock } from 'lucide-react';
 import { api } from '../services/api.js';
 import { useDeviceSocket } from '../hooks/useDeviceSocket.js';
@@ -31,7 +31,15 @@ export default function DeviceDetail() {
   const [live, setLive] = useState(null);
   const [error, setError] = useState('');
   const [actionMsg, setActionMsg] = useState('');
-  const [tab, setTab] = useState('overview');
+  const [searchParams, setSearchParams] = useSearchParams();
+  // Deep-link support: /devices/:id?tab=apps opens the Apps tab directly,
+  // and every tab switch is reflected in the URL (shareable + back-button safe).
+  const initialTab = TABS.some((t) => t.id === searchParams.get('tab')) ? searchParams.get('tab') : 'overview';
+  const [tab, setTabState] = useState(initialTab);
+  const setTab = (t) => {
+    setTabState(t);
+    setSearchParams(t === 'overview' ? {} : { tab: t }, { replace: true });
+  };
 
   const load = useCallback(async () => {
     setError('');

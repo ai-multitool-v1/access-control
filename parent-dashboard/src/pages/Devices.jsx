@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../services/api.js';
-import { PageHeader, SpatialCard, StatusDot, Loading, EmptyState, ErrorBanner, fmtTime } from '../components/ui.jsx';
+import { PageHeader, SpatialCard, StatusDot, Loading, EmptyState, ErrorBanner, fmtTime, EmptyIcon, DeviceQuickLinks } from '../components/ui.jsx';
 
 export default function Devices() {
   const [devices, setDevices] = useState(null);
@@ -26,7 +26,7 @@ export default function Devices() {
       {!devices ? (
         <Loading />
       ) : devices.length === 0 ? (
-        <EmptyState icon="📱" title="No devices" hint="Pair the child app to see devices here." action={<Link to="/pairing" className="btn-primary mt-2">Pair a device</Link>} />
+        <EmptyState icon={<EmptyIcon />} title="No devices" hint="Pair the child app to see devices here." action={<Link to="/pairing" className="btn-primary mt-2">Pair a device</Link>} />
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {devices.map((d) => (
@@ -38,6 +38,7 @@ export default function Devices() {
                 </div>
                 <div className="mt-1 text-xs text-slate-500">{[d.brand, d.model, d.android_version && `Android ${d.android_version}`].filter(Boolean).join(' • ')}</div>
                 <div className="mt-3 text-xs text-slate-500">Last seen: {fmtTime(d.last_seen_at)}</div>
+                <DeviceQuickLinks deviceId={d.id} />
               </SpatialCard>
             </Link>
           ))}

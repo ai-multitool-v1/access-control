@@ -24,7 +24,6 @@ class PolicyEnforcerService : Service() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var blockShownFor: String? = null
-    @Volatile private var nextReArmPromptAt = 0L
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -76,12 +75,21 @@ class PolicyEnforcerService : Service() {
         }
     }
 
-    /** When the parent-approved uninstall window ends, ask to re-arm device admin. */
+    /**
+     * When a parent-approved uninstall window ends, notify ONCE so the child
+     * can re-arm device admin from Settings. Never nag on every broadcast —
+     * one prompt per expired window, nothing more.
+     */
     private suspend fun maybeReArmUninstallProtection() {
         if (DevicePolicy.graceActive()) return
         if (DevicePolicy.isAdmin(this)) return
-        if (System.currentTimeMillis() < nextReArmPromptAt) return
-        nextReArmPromptAt = System.currentTimeMillis() + 30 * 60_000L // at most every 30 min
+        val graceEnd = org.setbd.control.storage.Prefs.uninstallGraceUntil
+        // Only after an actual parent-approved grace window has expired.
+        if (graceEnd <= 0L || System.currentTimeMillis() <= graceEnd) return
+        // Already reminded for this expiry — stay silent (fixes the repeated
+        // "allow" prompts the child kept receiving every 30 minutes).
+        if (org.setbd.control.storage.Prefs.uninstallReArmNotifiedAt >= graceEnd) return
+        org.setbd.control.storage.Prefs.uninstallReArmNotifiedAt = System.currentTimeMillis()
         NotificationHelper.showAlert(
             this,
             getString(org.setbd.control.R.string.uninstall_expired_title),

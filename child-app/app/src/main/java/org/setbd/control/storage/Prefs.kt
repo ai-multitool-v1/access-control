@@ -44,4 +44,12 @@ object Prefs {
     var uninstallGraceUntil: Long
         get() = prefs.getLong("uninstall_grace_until", 0L)
         set(v) = prefs.edit().putLong("uninstall_grace_until", v).apply()
+
+    /**
+     * Epoch ms of the last "protection expired" notification. One nag per
+     * grace window only — never repeat the same allow prompt on broadcasts.
+     */
+    var uninstallReArmNotifiedAt: Long
+        get() = prefs.getLong("uninstall_rearm_notified_at", 0L)
+        set(v) = prefs.edit().putLong("uninstall_rearm_notified_at", v).apply()
 }

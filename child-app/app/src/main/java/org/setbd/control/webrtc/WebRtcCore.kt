@@ -81,6 +81,9 @@ object WebRtcCore {
         mainHandler.post { if (activeKind != null) teardown(notifyStopped = true) }
     }
 
+    /** True when a capture session of this kind is currently active. */
+    fun isLive(kind: String): Boolean = activeKind == kind
+
     fun handleSignal(context: Context, payload: JSONObject) {
         mainHandler.post {
             try {

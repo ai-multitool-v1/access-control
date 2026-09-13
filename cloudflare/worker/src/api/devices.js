@@ -7,7 +7,12 @@ import { notifyDeviceEvent } from '../notify/events.js';
 const DEVICE_COLS = 'id,parent_id,name,model,brand,android_version,app_version,status,battery_level,charging,network_state,last_seen_at,created_at';
 
 export async function listDevices(env, parent) {
-  const rows = await sbRest(env, `devices?parent_id=eq.${parent.id}&select=${DEVICE_COLS}&order=created_at.desc`);
+  // Revoked (unpaired) devices are hidden from the list — unpairing must feel
+  // final. The child is kicked + its sessions revoked in revokeDevice().
+  const rows = await sbRest(
+    env,
+    `devices?parent_id=eq.${parent.id}&status=neq.revoked&select=${DEVICE_COLS}&order=created_at.desc`
+  );
   return json({ ok: true, devices: rows });
 }
 

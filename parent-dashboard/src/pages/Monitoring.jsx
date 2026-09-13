@@ -55,6 +55,11 @@ export default function Monitoring() {
   };
 
   const live = rtc.status === 'live' || rtc.status === 'connecting';
+  // While a request is pending (child hasn't approved yet) the start buttons
+  // must be locked — re-clicking used to re-send the command and re-trigger
+  // the child's consent dialog again and again.
+  const pending = rtc.status === 'requested';
+  const startLocked = live || pending;
   const showVideo = rtc.kind === 'screen' || rtc.kind === 'camera';
   const modalOpen = rtc.status !== 'idle'; // BIG modal whenever a remote session is active/requested
 
@@ -82,17 +87,17 @@ export default function Monitoring() {
 
             <h4 className="mt-5 mb-2 font-mono text-[11px] font-bold uppercase tracking-[0.2em] text-neon-dim">Remote access (WebRTC)</h4>
             <div className="space-y-2">
-              <button className="btn-ghost w-full" disabled={conn !== 'connected' || live} onClick={startScreen}>
+              <button className="btn-ghost w-full" disabled={conn !== 'connected' || startLocked} onClick={startScreen}>
                 <MonitorPlay className="h-4 w-4" /> Screen mirroring
               </button>
-              <button className="btn-ghost w-full" disabled={conn !== 'connected' || live} onClick={startAmbient}>
+              <button className="btn-ghost w-full" disabled={conn !== 'connected' || startLocked} onClick={startAmbient}>
                 <Headphones className="h-4 w-4" /> One-way audio (listen)
               </button>
               <div className="grid grid-cols-2 gap-2">
-                <button className="btn-ghost" disabled={conn !== 'connected' || live} onClick={() => startCamera('front')}>
+                <button className="btn-ghost" disabled={conn !== 'connected' || startLocked} onClick={() => startCamera('front')}>
                   <Camera className="h-4 w-4" /> Front
                 </button>
-                <button className="btn-ghost" disabled={conn !== 'connected' || live} onClick={() => startCamera('back')}>
+                <button className="btn-ghost" disabled={conn !== 'connected' || startLocked} onClick={() => startCamera('back')}>
                   <CameraOff className="h-4 w-4" /> Back
                 </button>
               </div>
