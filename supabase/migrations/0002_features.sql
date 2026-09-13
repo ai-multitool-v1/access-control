@@ -74,12 +74,18 @@ alter table app_restrictions enable row level security;
 alter table geo_zones enable row level security;
 alter table device_events enable row level security;
 
+-- drop-if-exists guards keep this file re-runnable (supabase db push re-applies
+-- non-timestamped filenames on every push).
+drop policy if exists "device_apps parent all" on device_apps;
 create policy "device_apps parent all" on device_apps
   for all using (auth.uid() = parent_id) with check (auth.uid() = parent_id);
+drop policy if exists "app_restrictions parent all" on app_restrictions;
 create policy "app_restrictions parent all" on app_restrictions
   for all using (auth.uid() = parent_id) with check (auth.uid() = parent_id);
+drop policy if exists "geo_zones parent all" on geo_zones;
 create policy "geo_zones parent all" on geo_zones
   for all using (auth.uid() = parent_id) with check (auth.uid() = parent_id);
+drop policy if exists "device_events parent all" on device_events;
 create policy "device_events parent all" on device_events
   for all using (auth.uid() = parent_id) with check (auth.uid() = parent_id);
 

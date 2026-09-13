@@ -180,49 +180,66 @@ alter table telegram_settings enable row level security;
 alter table subscriptions enable row level security;
 alter table audit_logs enable row level security;
 
+-- policies are guarded with drop-if-exists so `supabase db push` can safely
+-- re-run this file (the CLI re-applies non-timestamped filenames every push).
+
 -- profiles: read/update own
+drop policy if exists "profiles select own" on profiles;
 create policy "profiles select own" on profiles for select using (auth.uid() = id);
+drop policy if exists "profiles update own" on profiles;
 create policy "profiles update own" on profiles for update using (auth.uid() = id);
 
 -- devices: parent sees only own devices; writes go through the Worker (service role)
+drop policy if exists "devices select own" on devices;
 create policy "devices select own" on devices for select using (parent_id = auth.uid());
 
 -- pairings: parent sees own codes
+drop policy if exists "pairings select own" on device_pairings;
 create policy "pairings select own" on device_pairings for select using (parent_id = auth.uid());
 
 -- device sessions: no client policies (Worker/service-role only)
 
 -- device settings via parent's device
+drop policy if exists "device_settings select own" on device_settings;
 create policy "device_settings select own" on device_settings for select
   using (exists (select 1 from devices d where d.id = device_id and d.parent_id = auth.uid()));
 
 -- policies
+drop policy if exists "policies select own" on parental_policies;
 create policy "policies select own" on parental_policies for select
   using (exists (select 1 from devices d where d.id = device_id and d.parent_id = auth.uid()));
+drop policy if exists "policies write own" on parental_policies;
 create policy "policies write own" on parental_policies for all
   using (exists (select 1 from devices d where d.id = device_id and d.parent_id = auth.uid()))
   with check (exists (select 1 from devices d where d.id = device_id and d.parent_id = auth.uid()));
 
 -- usage
+drop policy if exists "usage select own" on app_usage_summaries;
 create policy "usage select own" on app_usage_summaries for select
   using (exists (select 1 from devices d where d.id = device_id and d.parent_id = auth.uid()));
 
 -- locations
+drop policy if exists "locations select own" on locations;
 create policy "locations select own" on locations for select
   using (exists (select 1 from devices d where d.id = device_id and d.parent_id = auth.uid()));
 
 -- notification settings
+drop policy if exists "notif select own" on notification_settings;
 create policy "notif select own" on notification_settings for select using (parent_id = auth.uid());
+drop policy if exists "notif write own" on notification_settings;
 create policy "notif write own" on notification_settings for all
   using (parent_id = auth.uid()) with check (parent_id = auth.uid());
 
 -- telegram settings: read via Worker only (token masked server-side).
+drop policy if exists "telegram select own" on telegram_settings;
 create policy "telegram select own" on telegram_settings for select using (parent_id = auth.uid());
 
 -- subscriptions
+drop policy if exists "subscriptions select own" on subscriptions;
 create policy "subscriptions select own" on subscriptions for select using (parent_id = auth.uid());
 
 -- audit logs
+drop policy if exists "audit select own" on audit_logs;
 create policy "audit select own" on audit_logs for select using (parent_id = auth.uid());
 
 -- updated_at touch trigger
