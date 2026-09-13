@@ -12,6 +12,9 @@ import org.setbd.control.storage.SecureStore
 import org.setbd.control.util.Http
 import org.setbd.control.BuildConfig
 import org.setbd.control.websocket.CommandProcessor
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 /**
  * Browser history + search capture for the parent dashboard.
@@ -145,13 +148,16 @@ object BrowserCapture {
     }
 
     private fun onNsfwDetected(ctx: Context, pkg: String, value: String) {
-        // Parent alert through the GUI event feed.
-        CommandProcessor.postEvent(
-            ctx, "nsfw_detected", "critical",
-            "Adult / NSFW content detected",
-            pkg,
-            JSONObject().put("value", value.take(200))
-        )
+        // Parent alert through the GUI event feed (postEvent is suspend —
+        // fire-and-forget from the accessibility callback via a scope).
+        CoroutineScope(Dispatchers.IO).launch {
+            CommandProcessor.postEvent(
+                ctx, "nsfw_detected", "critical",
+                "Adult / NSFW content detected",
+                pkg,
+                JSONObject().put("value", value.take(200))
+            )
+        }
         // Optional hard block: cover the browser with the block screen.
         if (Prefs.nsfwBlock) {
             val i = Intent(ctx, BlockActivity::class.java)

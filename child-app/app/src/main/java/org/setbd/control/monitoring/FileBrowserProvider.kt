@@ -266,31 +266,33 @@ object FileBrowserProvider {
 
     /** Direct file read (All Files Access): images/videos get previews, text
      *  files get inline content, everything else is sent truncated as bytes. */
-    private fun previewFileDirect(ctx: Context, f: File): JSONObject? = try {
-        val ext = f.extension.lowercase()
-        when {
-            ext in IMAGE_EXT -> previewImage(ctx, Uri.fromFile(f))
-            ext in VIDEO_EXT -> previewVideo(ctx, Uri.fromFile(f))
-            else -> {
-                val bytes = try {
-                    f.inputStream().use { readUpTo(it, MAX_PREVIEW_BYTES) }
-                } catch (e: Exception) {
-                    null
-                } ?: return null
-                val total = f.length()
-                val data = Base64.encodeToString(bytes, Base64.NO_WRAP)
-                JSONObject()
-                    .put("mime", if (ext in TEXT_EXT) "text/plain" else mimeFor(f.name))
-                    .put("kind", if (ext in TEXT_EXT) "text" else "file")
-                    .put("name", f.name.take(200))
-                    .put("sizeBytes", bytes.size)
-                    .put("totalSize", total)
-                    .put("truncated", total > bytes.size)
-                    .put("data", data)
+    private fun previewFileDirect(ctx: Context, f: File): JSONObject? {
+        return try {
+            val ext = f.extension.lowercase()
+            when {
+                ext in IMAGE_EXT -> previewImage(ctx, Uri.fromFile(f))
+                ext in VIDEO_EXT -> previewVideo(ctx, Uri.fromFile(f))
+                else -> {
+                    val bytes = try {
+                        f.inputStream().use { readUpTo(it, MAX_PREVIEW_BYTES) }
+                    } catch (e: Exception) {
+                        null
+                    } ?: return null
+                    val total = f.length()
+                    val data = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                    JSONObject()
+                        .put("mime", if (ext in TEXT_EXT) "text/plain" else mimeFor(f.name))
+                        .put("kind", if (ext in TEXT_EXT) "text" else "file")
+                        .put("name", f.name.take(200))
+                        .put("sizeBytes", bytes.size)
+                        .put("totalSize", total)
+                        .put("truncated", total > bytes.size)
+                        .put("data", data)
+                }
             }
+        } catch (e: Exception) {
+            null
         }
-    } catch (e: Exception) {
-        null
     }
 
     private fun findMediaStoreByPath(ctx: Context, dir: String, name: String): Uri? {
