@@ -58,6 +58,17 @@ class ChildNotificationListener : NotificationListenerService() {
                 queue.put(item)
                 while (queue.length() > 40) queue.remove(0)
             }
+            // Live path: the parent dashboard shows an instant toast/bell for
+            // captured notifications when the child socket is connected.
+            org.setbd.control.websocket.RealtimeBridge.sendEvent(
+                "notification",
+                org.json.JSONObject()
+                    .put("appLabel", appLabel.take(140))
+                    .put("packageName", n.packageName.take(160))
+                    .put("notifTitle", title.take(200))
+                    .put("text", text.take(300))
+                    .put("postedAt", n.postTime)
+            )
             flushIfDue()
         } catch (e: Exception) {
             // never crash the listener service

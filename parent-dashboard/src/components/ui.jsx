@@ -216,30 +216,43 @@ export function Stat({ label, value, sub, accent = 'text-white' }) {
 
 // ---------- GUI feed (device_events timeline) ----------
 
-export function FeedTimeline({ events, emptyText = 'No events yet.' }) {
+export function FeedTimeline({ events, emptyText = 'No events yet.', onSelect, unreadIds }) {
   if (!events || events.length === 0) {
     return <p className="py-8 text-center font-mono text-xs uppercase text-slate-600">{emptyText}</p>;
   }
+  const clickable = typeof onSelect === 'function';
   return (
     <ol className="relative space-y-0 border-l-2 border-space-600 pl-4">
-      {events.map((e) => (
-        <li key={e.id} className="relative pb-3">
-          <span className={`absolute -left-[26px] flex h-6 w-6 items-center justify-center border-2 bg-space-800 ${SEVERITY_STYLE[e.severity] || SEVERITY_STYLE.info}`}>
-            <EventIcon type={e.type} className="h-3.5 w-3.5" />
-          </span>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className={`chip ${SEVERITY_STYLE[e.severity] || SEVERITY_STYLE.info}`}>{e.type}</span>
-            <span className="text-sm font-semibold text-slate-100">{e.title}</span>
-            <span className="ml-auto font-mono text-[10px] text-slate-600">{fmtTime(e.created_at)}</span>
-          </div>
-          {e.package_name && <div className="mt-0.5 font-mono text-[11px] text-neon-dim">{e.package_name}</div>}
-          {e.detail && Object.keys(e.detail || {}).length > 0 && (
-            <div className="mt-1 break-all font-mono text-[10px] text-slate-500">
-              {Object.entries(e.detail).slice(0, 4).map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`).join(' · ')}
+      {events.map((e) => {
+        const unread = unreadIds instanceof Set ? unreadIds.has(e.id) : false;
+        return (
+          <li key={e.id} className="relative pb-3">
+            <span className={`absolute -left-[26px] flex h-6 w-6 items-center justify-center border-2 bg-space-800 ${SEVERITY_STYLE[e.severity] || SEVERITY_STYLE.info}`}>
+              <EventIcon type={e.type} className="h-3.5 w-3.5" />
+            </span>
+            <div
+              onClick={clickable ? () => onSelect(e) : undefined}
+              className={`${clickable ? 'cursor-pointer transition hover:bg-space-700/60 ' : ''}rounded-sm px-2 py-1.5 ${unread ? 'bg-neon/5 border border-neon/30' : ''}`}
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={`chip ${SEVERITY_STYLE[e.severity] || SEVERITY_STYLE.info}`}>{e.type}</span>
+                <span className="text-sm font-semibold text-slate-100">{e.title}</span>
+                {unread && <span className="h-2 w-2 shrink-0 rounded-full bg-neon" title="Unread" />}
+                <span className="ml-auto font-mono text-[10px] text-slate-600">{fmtTime(e.created_at)}</span>
+              </div>
+              {e.package_name && <div className="mt-0.5 font-mono text-[11px] text-neon-dim">{e.package_name}</div>}
+              {e.detail && Object.keys(e.detail || {}).length > 0 && (
+                <div className="mt-1 break-all font-mono text-[10px] text-slate-500">
+                  {Object.entries(e.detail).slice(0, 4).map(([k, v]) => `${k}: ${typeof v === 'object' ? JSON.stringify(v) : v}`).join(' · ')}
+                </div>
+              )}
+              {clickable && (
+                <div className="mt-1 font-mono text-[9px] uppercase tracking-[0.2em] text-slate-600">click for details →</div>
+              )}
             </div>
-          )}
-        </li>
-      ))}
+          </li>
+        );
+      })}
     </ol>
   );
 }

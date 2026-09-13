@@ -37,12 +37,23 @@ class BlockActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.blockReason).text =
             if (reason.isBlank()) getString(R.string.block_subtitle) else "$reason — ${getString(R.string.block_subtitle)}"
 
-        val used = UsageStatsProvider.minutesForPackage(this, pkg)
-        findViewById<TextView>(R.id.blockStats).text = getString(R.string.block_used_today, used)
+        // Parent-pushed overlay (force_overlay command) overrides the app label
+        // and "used today" line with the parent's own text.
+        val customTitle = intent.getStringExtra("custom_text")
+        if (!customTitle.isNullOrBlank()) {
+            findViewById<TextView>(R.id.blockApp).text = customTitle.take(300)
+            findViewById<TextView>(R.id.blockStats).visibility = View.GONE
+        } else {
+            val used = UsageStatsProvider.minutesForPackage(this, pkg)
+            findViewById<TextView>(R.id.blockStats).text = getString(R.string.block_used_today, used)
+        }
 
         // Parent's custom picture (text + photo overlay from the dashboard).
+        // Priority: extras pushed with the force_overlay command, then the
+        // saved restriction record for the blocked package.
         val img = findViewById<ImageView>(R.id.blockImage)
-        val b64 = PolicyEngine.restrictionFor(pkg)?.optString("overlay_image").orEmpty()
+        val b64 = intent.getStringExtra("custom_image_b64")
+            ?: PolicyEngine.restrictionFor(pkg)?.optString("overlay_image").orEmpty()
         val decoded = decodeDataImage(b64)
         if (decoded != null) {
             img.setImageBitmap(decoded)

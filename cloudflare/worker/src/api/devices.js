@@ -3,6 +3,8 @@
 import { json, err, HttpError, readJson, str } from '../lib/respond.js';
 import { sbRest, sbSingle, sbInsert, sbUpdate } from '../lib/supabase.js';
 import { notifyDeviceEvent } from '../notify/events.js';
+import { pushServerEvent } from '../lib/devicehub.js';
+import { listPolicies } from './policies.js';
 
 const DEVICE_COLS = 'id,parent_id,name,model,brand,android_version,app_version,status,battery_level,charging,network_state,last_seen_at,created_at';
 
@@ -68,6 +70,9 @@ export async function deviceSettings(request, env, parent, deviceId, method) {
     action: 'device_settings_updated',
     detail: { locationEnabled: Boolean(body.locationEnabled) },
   }, false);
+  // Live nudge so the child re-pulls policies + the location gate instantly
+  // (otherwise the periodic sync only notices on its next 15-min cycle).
+  await pushServerEvent(env, deviceId, 'policies_updated', {});
   return json({ ok: true, locationEnabled: Boolean(body.locationEnabled) });
 }
 
@@ -77,6 +82,29 @@ export async function registerFcm(request, env, device) {
   if (!token) throw new HttpError(400, 'bad_request', 'fcmToken required');
   await sbUpdate(env, 'devices', `id=eq.${device.id}`, { fcm_token: token, updated_at: new Date().toISOString() });
   return json({ ok: true });
+}
+
+/**
+ * Device-authenticated policy + settings pull. The child used to call the
+ * parent-only /api/devices/:id/policies route and got 401 forever — policies,
+ * schedules, app limits and the location gate never reached the device.
+ */
+export async function childPolicies(env, device) {
+  let policies = [];
+  try {
+    const res = await listPolicies(env, { id: device.parent_id }, device.id);
+    policies = res.policies || [];
+  } catch { /* empty policy set on failure */ }
+  let locationEnabled = false;
+  try {
+    const s = await sbSingle(env, `device_settings?device_id=eq.${device.id}&select=location_enabled`);
+    locationEnabled = Boolean(s?.location_enabled);
+  } catch { /* default false */ }
+  return json({
+    ok: true,
+    policies,
+    settings: { locationEnabled },
+  });
 }
 
 export async function deviceAudit(env, parent, deviceId) {

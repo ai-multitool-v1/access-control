@@ -16,8 +16,8 @@ function b64url(str) {
 
 function parsePkcs8(pem) {
   const b64 = pem
-    .replace(/-----BEGIN PRIVATE KEY-----/, '')
-    .replace(/-----END PRIVATE KEY-----/, '')
+    .replace(/-----BEGIN[ A-Z]*PRIVATE KEY-----/, '')
+    .replace(/-----END[ A-Z]*PRIVATE KEY-----/, '')
     .replace(/\s+/g, '');
   const bin = atob(b64);
   const buf = new Uint8Array(bin.length);

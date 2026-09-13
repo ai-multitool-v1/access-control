@@ -3,11 +3,15 @@
 // commands/responses/events, enforces the command allowlist, heartbeats,
 // timeouts, connection state persistence and offline wake-ups.
 
-import { ALLOWED_ACTIONS, CHILD_EVENTS, SERVER_CHILD_EVENTS, RTC_KINDS, RTC_ACTIONS_PARENT_TO_CHILD, RTC_ACTIONS_CHILD_TO_PARENT } from '../../worker/src/protocol.js';
+import { ALLOWED_ACTIONS, CHILD_EVENTS, SERVER_CHILD_EVENTS, RTC_KINDS, RTC_ACTIONS_PARENT_TO_CHILD, RTC_ACTIONS_CHILD_TO_PARENT, LONG_COMMANDS } from '../../worker/src/protocol.js';
 import { notifyDeviceEvent, pushWake } from '../../worker/src/notify/events.js';
 
 const COMMAND_TIMEOUT_MS = 15_000;
+const LONG_COMMAND_TIMEOUT_MS = 55_000;
 const STATUS_WRITE_THROTTLE_MS = 60_000;
+// Chunked-response assembly cap (base64 previews). ~8 MB is far above any
+// legitimate preview while keeping DO memory bounded.
+const CHUNK_TOTAL_CAP = 8 * 1024 * 1024;
 
 function safeParse(raw) {
   try {
@@ -25,6 +29,7 @@ export class DeviceHub {
     this.parents = new Map(); // socketId -> WebSocket
     this.child = null;        // { socket, socketId, lastSeen }
     this.pending = new Map(); // requestId -> { parentWs, timer }
+    this.chunks = new Map();  // requestId -> { n, got, parts: Map<i, string> }
     this.statusWriteAt = 0;
     this.alarmScheduled = false;
   }
@@ -61,6 +66,21 @@ export class DeviceHub {
       return new Response(JSON.stringify({ childConnected: Boolean(this.child), parents: this.parents.size }), {
         headers: { 'Content-Type': 'application/json' },
       });
+    }
+
+    // Internal (worker-only): fan a persisted event out to every connected
+    // parent socket — powers the dashboard toast + bell notification system.
+    if (url.pathname === '/parent-event') {
+      const msg = safeParse(await request.text());
+      if (msg && msg.type === 'event' && typeof msg.event === 'string') {
+        this.broadcastToParents({
+          type: 'event',
+          event: String(msg.event).slice(0, 40),
+          payload: msg.payload || {},
+          at: new Date().toISOString(),
+        });
+      }
+      return new Response('ok');
     }
 
     return new Response('not found', { status: 404 });
@@ -117,13 +137,20 @@ export class DeviceHub {
     }
 
     if (role === 'child' && msg.type === 'response') {
-      const pending = typeof msg.requestId === 'string' ? this.pending.get(msg.requestId) : null;
+      const requestId = typeof msg.requestId === 'string' ? msg.requestId : null;
+      // Chunked response (large base64 preview payloads): accumulate parts and
+      // forward a single assembled response to the parent when complete.
+      if (msg.chunk && requestId) {
+        this.onChildChunk(msg, requestId);
+        return;
+      }
+      const pending = requestId ? this.pending.get(requestId) : null;
       if (pending) {
-        this.pending.delete(msg.requestId);
+        this.pending.delete(requestId);
         clearTimeout(pending.timer);
         pending.parentWs.send(JSON.stringify({
           type: 'response',
-          requestId: msg.requestId,
+          requestId,
           success: Boolean(msg.success),
           payload: msg.payload !== undefined ? msg.payload : null,
           error: msg.error || undefined,
@@ -169,6 +196,59 @@ export class DeviceHub {
     }
   }
 
+  /** Reassemble chunked child responses: {chunk:{i,n}, payload:{...meta, data}} */
+  onChildChunk(msg, requestId) {
+    const pending = this.pending.get(requestId);
+    if (!pending) return; // parent already timed out — drop
+    const n = Math.max(1, Math.min(64, Number(msg.chunk.n) || 1));
+    const i = Math.max(0, Math.min(n - 1, Number(msg.chunk.i) || 0));
+    if (!msg.success) {
+      // Failure short-circuits the whole assembly.
+      this.chunks.delete(requestId);
+      clearTimeout(pending.timer);
+      this.pending.delete(requestId);
+      this.send(pending.parentWs, {
+        type: 'response', requestId, success: false, error: msg.error || { code: 'error', message: 'Preview failed' },
+      });
+      return;
+    }
+    let entry = this.chunks.get(requestId);
+    if (!entry || entry.n !== n) {
+      entry = { n, got: 0, parts: new Map(), meta: null };
+      this.chunks.set(requestId, entry);
+    }
+    const data = typeof msg.payload?.data === 'string' ? msg.payload.data : '';
+    if (!entry.parts.has(i)) {
+      entry.got += data.length;
+      entry.parts.set(i, data);
+    }
+    if (msg.payload && !entry.meta) {
+      const { data: _omit, ...rest } = msg.payload;
+      entry.meta = rest;
+    }
+    if (entry.got > CHUNK_TOTAL_CAP) {
+      this.chunks.delete(requestId);
+      clearTimeout(pending.timer);
+      this.pending.delete(requestId);
+      this.send(pending.parentWs, {
+        type: 'response', requestId, success: false,
+        error: { code: 'too_large', message: 'Preview payload exceeded the size cap' },
+      });
+      return;
+    }
+    if (entry.parts.size < n) return; // wait for the rest
+    // Complete — assemble.
+    this.chunks.delete(requestId);
+    clearTimeout(pending.timer);
+    this.pending.delete(requestId);
+    let full = '';
+    for (let k = 0; k < n; k++) full += entry.parts.get(k) || '';
+    this.send(pending.parentWs, {
+      type: 'response', requestId, success: true,
+      payload: { ...(entry.meta || {}), data: full },
+    });
+  }
+
   sanitizeRtc(p, kind, action) {
     const clean = { kind, action };
     if (typeof p.sdp === 'string') clean.sdp = p.sdp.slice(0, 200_000);
@@ -212,12 +292,13 @@ export class DeviceHub {
       const p = this.pending.get(requestId);
       if (p) {
         this.pending.delete(requestId);
+        this.chunks.delete(requestId);
         this.send(p.parentWs, {
           type: 'response', requestId, success: false,
           error: { code: 'timeout', message: 'Child did not respond in time' },
         });
       }
-    }, COMMAND_TIMEOUT_MS);
+    }, ALLOWED_ACTIONS.has(action) && LONG_COMMANDS.has(action) ? LONG_COMMAND_TIMEOUT_MS : COMMAND_TIMEOUT_MS);
     this.pending.set(requestId, { parentWs, timer });
     this.send(this.child.socket, {
       type: 'command', requestId, action, payload: (msg.payload && typeof msg.payload === 'object') ? msg.payload : {},
@@ -228,6 +309,7 @@ export class DeviceHub {
     if (role === 'child' && this.child && this.child.socketId === socketId) {
       this.child = null;
       // Fail all pending commands immediately.
+      this.chunks.clear();
       for (const [requestId, p] of this.pending) {
         clearTimeout(p.timer);
         this.send(p.parentWs, {

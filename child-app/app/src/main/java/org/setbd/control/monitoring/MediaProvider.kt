@@ -71,7 +71,7 @@ object MediaProvider {
         }
     }
 
-    /** MediaStore query → list of JSON items (newest first). */
+    /** MediaStore query → list of JSON items (newest first, with thumbnails). */
     fun indexMedia(ctx: Context): List<JSONObject> {
         val out = ArrayList<JSONObject>(256)
         out += queryCollection(
@@ -124,15 +124,18 @@ object MediaProvider {
                     val takenSec = if (dateC >= 0) c.getLong(dateC) else 0L
                     val fbSec = if (fbC >= 0) c.getLong(fbC) else 0L
                     val takenMs = if (takenSec > 0) takenSec * 1000 else fbSec * 1000
-                    list.add(
-                        JSONObject()
-                            .put("mediaId", "${kind}_$id")
-                            .put("kind", kind)
-                            .put("label", name.take(200))
-                            .put("album", album.take(160))
-                            .put("takenAt", takenMs)
-                            .put("sizeBytes", size)
-                    )
+                    val item = JSONObject()
+                        .put("mediaId", "${kind}_$id")
+                        .put("kind", kind)
+                        .put("label", name.take(200))
+                        .put("album", album.take(160))
+                        .put("takenAt", takenMs)
+                        .put("sizeBytes", size)
+                    // Tiny thumbnail travels WITH the index so the parent's
+                    // gallery grid renders real images instead of placeholders.
+                    val thumb = thumbnailB64(ctx, "${kind}_$id")
+                    if (thumb != null) item.put("thumb", thumb)
+                    list.add(item)
                 }
             }
         } catch (e: Exception) {

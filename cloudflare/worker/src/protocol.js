@@ -31,6 +31,28 @@ export const ALLOWED_ACTIONS = new Set([
   'refresh_hardware',     // ask the child to re-post its full hardware report
   'sync_media',           // ask the child to re-index photos/videos for the parent's media view
   'sync_notifications',   // ask the child to flush its queued notification history
+  // Parent overlay push (custom text + optional picture, shown instantly)
+  'force_overlay',
+  // On-device preview relay (files / photos / videos are NEVER stored server-side)
+  'media_preview',
+  'list_files',
+  // History viewers (usage events; browser apps history)
+  'get_usage_timeline',
+  'get_browser_history',
+]);
+
+// Commands whose responses can be large (chunked base64 previews / history
+// dumps) get a longer ack window than the default 15 s.
+export const LONG_COMMANDS = new Set([
+  'media_preview',
+  'list_files',
+  'get_usage_timeline',
+  'get_browser_history',
+  'get_contacts',
+  'get_call_logs',
+  'get_sms',
+  'sync_media',
+  'get_installed_apps',
 ]);
 
 // Child -> parent events the DO forwards to parents.

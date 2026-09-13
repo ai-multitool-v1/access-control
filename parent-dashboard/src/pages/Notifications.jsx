@@ -28,7 +28,17 @@ export default function Notifications() {
     setMsg(''); setError('');
     try {
       const r = await api('/api/notifications/test', { method: 'POST', body: devices[0] ? { deviceId: devices[0].id } : {} });
-      setMsg(r.ok ? 'Test push sent (requires Firebase configured in the child app)' : `Failed: ${r.message}`);
+      if (r.ok && r.fcm?.ok) {
+        setMsg('Test push delivered to the child device. The child app shows it as a notification.');
+      } else if (r.code === 'no_fcm_token') {
+        setError('The child app has not registered an FCM token yet. Open the child app once (or press Sync data on the device page) so it can register, then try again.');
+      } else if (r.fcm && r.fcm.ok === false) {
+        setError(`FCM rejected the push (${r.fcm.status || r.fcm.error || 'unknown'})${r.fcm.detail ? `: ${r.fcm.detail}` : ''}`);
+      } else if (r.fcm && r.fcm.skipped) {
+        setError(`Push skipped: ${r.fcm.reason}. The FCM service account is not configured on the server.`);
+      } else {
+        setMsg('Test push request sent.');
+      }
     } catch (e) {
       setError(e.message);
     }

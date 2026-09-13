@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react';
 import {
   MonitorPlay, Headphones, Camera, CameraOff, PhoneOff, Radar, Fingerprint,
   Users, PhoneCall, Satellite, BatteryCharging, Wifi, Package, Bell,
+  MessageSquare, Globe, History,
 } from 'lucide-react';
 import { api } from '../services/api.js';
 import { useDeviceSocket } from '../hooks/useDeviceSocket.js';
 import { useRtcViewer } from '../hooks/useRtcViewer.js';
 import { command, onEvent } from '../services/ws.js';
-import { PageHeader, SpatialCard, StatusDot, EmptyState, ErrorBanner, FeedTimeline, fmtTime } from '../components/ui.jsx';
+import { PageHeader, SpatialCard, StatusDot, EmptyState, ErrorBanner, fmtTime } from '../components/ui.jsx';
+import DataModal from '../components/DataModal.jsx';
 
 const RTC_LABELS = { screen: 'Screen mirroring', ambient: 'One-way audio', camera: 'Remote camera' };
 
@@ -43,12 +45,24 @@ function eventDetail(event, p) {
   return parts.join(' · ');
 }
 
+const CALL_TYPES = { 1: 'Incoming', 2: 'Outgoing', 3: 'Missed', 4: 'Voicemail', 5: 'Rejected', 6: 'Blocked', 7: 'Answered outside' };
+const SMS_TYPES = { 1: 'Received', 2: 'Sent', 3: 'Draft', 4: 'Outbox', 5: 'Failed', 6: 'Queued' };
+
+function fmtDuration(sec) {
+  const s = Math.max(0, Math.round(Number(sec) || 0));
+  if (s < 60) return `${s}s`;
+  return `${Math.floor(s / 60)}m ${s % 60}s`;
+}
+
 export default function Monitoring() {
   const [devices, setDevices] = useState([]);
   const [deviceId, setDeviceId] = useState('');
   const [conn, setConn] = useState('disconnected');
   const [feed, setFeed] = useState([]);
   const [error, setError] = useState('');
+  // Data viewer: {title, subtitle, columns, rows}
+  const [dataView, setDataView] = useState(null);
+  const [dataBusy, setDataBusy] = useState(false);
   const rtc = useRtcViewer();
 
   useEffect(() => {
@@ -68,6 +82,24 @@ export default function Monitoring() {
     setFeed((f) => [{ event: 'action', payload: { text }, at: new Date().toISOString() }, ...f].slice(0, 50));
   }
 
+  // Live feed card -> detail modal (key/value preview + copy + sort).
+  function openPayload(e, label) {
+    const p = e.payload && typeof e.payload === 'object' ? e.payload : {};
+    const rows = Object.entries(p).map(([k, v]) => ({
+      field: k,
+      value: typeof v === 'object' ? JSON.stringify(v) : String(v),
+    }));
+    setDataView({
+      title: label,
+      subtitle: `captured ${fmtTime(e.at)}`,
+      columns: [
+        { key: 'field', label: 'Field', width: '130px' },
+        { key: 'value', label: 'Value' },
+      ],
+      rows,
+    });
+  }
+
   async function run(label, action, payload = {}) {
     try {
       await command(action, payload);
@@ -77,6 +109,86 @@ export default function Monitoring() {
       rtc.setError(e.message);
     }
   }
+
+  // Fetch a data payload from the child and show it in a sortable/copyable modal.
+  async function runData(label, action, build, payload = {}) {
+    setDataBusy(true);
+    push(`Requested ${label.toLowerCase()}`);
+    try {
+      const res = await command(action, payload, 25_000);
+      const { title, subtitle, columns, rows } = build(res || {});
+      setDataView({ title, subtitle, columns, rows });
+      push(`${label}: ${rows.length} row(s) received`);
+    } catch (e) {
+      push(`${label} failed: ${e.message}`);
+      rtc.setError(e.message);
+    } finally {
+      setDataBusy(false);
+    }
+  }
+
+  const contactsView = (res) => ({
+    title: 'Contacts',
+    subtitle: 'read live from the child device',
+    columns: [
+      { key: 'name', label: 'Name' },
+      { key: 'phone', label: 'Number', mono: true },
+    ],
+    rows: (res.contacts || []).map((c) => ({ name: c.name, phone: c.phone })),
+  });
+
+  const callsView = (res) => ({
+    title: 'Call logs',
+    subtitle: 'read live from the child device',
+    columns: [
+      { key: 'number', label: 'Number', mono: true },
+      { key: 'name', label: 'Contact' },
+      { key: 'type', label: 'Type', width: '90px' },
+      { key: 'when', label: 'Date', width: '150px' },
+      { key: 'duration', label: 'Duration', width: '80px' },
+    ],
+    rows: (res.calls || []).map((c) => ({
+      number: c.number,
+      name: c.name || '',
+      type: CALL_TYPES[c.type] || String(c.type),
+      when: fmtTime(c.date ? (c.date < 1e12 ? c.date * 1000 : c.date) : null),
+      duration: fmtDuration(c.duration),
+    })),
+  });
+
+  const smsView = (res) => ({
+    title: 'SMS messages',
+    subtitle: 'read live from the child device',
+    columns: [
+      { key: 'address', label: 'Number', mono: true, width: '110px' },
+      { key: 'body', label: 'Message' },
+      { key: 'type', label: 'Dir', width: '80px' },
+      { key: 'when', label: 'Date', width: '150px' },
+    ],
+    rows: (res.sms || []).map((s) => ({
+      address: s.address,
+      body: s.body,
+      type: SMS_TYPES[s.type] || String(s.type),
+      when: fmtTime(s.date ? (s.date < 1e12 ? s.date * 1000 : s.date) : null),
+    })),
+  });
+
+  const historyView = (res, title) => ({
+    title,
+    subtitle: res.mode === 'urls'
+      ? 'browser URL history from the device'
+      : res.note || 'app-level history (browsers no longer expose URL history)',
+    columns: [
+      { key: 'primary', label: res.mode === 'urls' ? 'URL' : 'App' },
+      { key: 'secondary', label: 'Detail' },
+      { key: 'when', label: 'When', width: '150px' },
+    ],
+    rows: (res.items || []).map((i) => ({
+      primary: res.mode === 'urls' ? i.url : (i.label || i.packageName),
+      secondary: res.mode === 'urls' ? (i.title || '') : i.packageName,
+      when: fmtTime(i.ts || null),
+    })),
+  });
 
   const startScreen = () => { rtc.markRequested('screen'); run('Screen mirror requested', 'start_screen_mirror'); };
   const startAmbient = () => { rtc.markRequested('ambient'); run('One-way audio requested', 'start_ambient_audio'); };
@@ -152,11 +264,20 @@ export default function Monitoring() {
               <button className="btn-ghost w-full" onClick={() => { push('Requested permission report'); run('Permissions', 'get_permission_status'); }}>
                 <Fingerprint className="h-4 w-4" /> Permission report
               </button>
-              <button className="btn-ghost w-full" onClick={() => { push('Requested contact list'); run('Contacts', 'get_contacts'); }}>
+              <button className="btn-ghost w-full" disabled={conn !== 'connected' || dataBusy} onClick={() => runData('Contacts', 'get_contacts', contactsView)}>
                 <Users className="h-4 w-4" /> Contacts (if granted)
               </button>
-              <button className="btn-ghost w-full" onClick={() => { push('Requested call logs'); run('Call logs', 'get_call_logs'); }}>
+              <button className="btn-ghost w-full" disabled={conn !== 'connected' || dataBusy} onClick={() => runData('Call logs', 'get_call_logs', callsView)}>
                 <PhoneCall className="h-4 w-4" /> Call logs (if granted)
+              </button>
+              <button className="btn-ghost w-full" disabled={conn !== 'connected' || dataBusy} onClick={() => runData('SMS', 'get_sms', smsView)}>
+                <MessageSquare className="h-4 w-4" /> SMS messages (if granted)
+              </button>
+              <button className="btn-ghost w-full" disabled={conn !== 'connected' || dataBusy} onClick={() => runData('Browser history', 'get_browser_history', (r) => historyView(r, 'Browser history'), { days: 7 })}>
+                <Globe className="h-4 w-4" /> Browser history (7 days)
+              </button>
+              <button className="btn-ghost w-full" disabled={conn !== 'connected' || dataBusy} onClick={() => runData('App history', 'get_usage_timeline', (r) => historyView(r, 'App history'), { days: 7 })}>
+                <History className="h-4 w-4" /> App history (7 days)
               </button>
             </div>
             <p className="mt-4 font-mono text-[10px] uppercase tracking-wider text-slate-600">
@@ -208,19 +329,25 @@ export default function Monitoring() {
                     const meta = EVENT_META[e.event] || EVENT_META._default;
                     const EVIcon = meta.icon;
                     return (
-                      <li key={i} className="flex items-start gap-3 border-2 border-space-600 bg-space-700/40 px-3 py-2.5">
-                        <span className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center border-2 ${meta.chip}`}>
-                          <EVIcon className="h-3.5 w-3.5" />
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-baseline justify-between gap-2">
-                            <span className="text-sm font-bold text-slate-100">{meta.label}</span>
-                            <span className="font-mono text-[10px] text-slate-600">{fmtTime(e.at)}</span>
+                      <li key={i}>
+                        <button
+                          className="flex w-full items-start gap-3 border-2 border-space-600 bg-space-700/40 px-3 py-2.5 text-left transition hover:border-neon"
+                          onClick={() => openPayload(e, meta.label)}
+                          title="Open details — copy + sort"
+                        >
+                          <span className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center border-2 ${meta.chip}`}>
+                            <EVIcon className="h-3.5 w-3.5" />
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-baseline justify-between gap-2">
+                              <span className="text-sm font-bold text-slate-100">{meta.label}</span>
+                              <span className="font-mono text-[10px] text-slate-600">{fmtTime(e.at)}</span>
+                            </div>
+                            {eventDetail(e.event, e.payload) && (
+                              <div className="mt-0.5 font-mono text-[11px] text-neon-dim">{eventDetail(e.event, e.payload)}</div>
+                            )}
                           </div>
-                          {eventDetail(e.event, e.payload) && (
-                            <div className="mt-0.5 font-mono text-[11px] text-neon-dim">{eventDetail(e.event, e.payload)}</div>
-                          )}
-                        </div>
+                        </button>
                       </li>
                     );
                   })}
@@ -229,6 +356,17 @@ export default function Monitoring() {
             </SpatialCard>
           </div>
         </div>
+      )}
+
+      {dataView && (
+        <DataModal
+          title={dataView.title}
+          subtitle={dataView.subtitle}
+          columns={dataView.columns}
+          rows={dataView.rows}
+          onClose={() => setDataView(null)}
+          emptyText="Nothing returned — check the matching permission on the child device."
+        />
       )}
 
       {/* ===== BIG remote-access modal ===== */}

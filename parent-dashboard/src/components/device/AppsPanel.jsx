@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { RefreshCw, Search, Ban, Save, Bell, ImageIcon, X } from 'lucide-react';
+import { RefreshCw, Search, Ban, Save, Bell, ImageIcon, X, Send, History, ShieldAlert } from 'lucide-react';
 import { api } from '../../services/api.js';
 import { command } from '../../services/ws.js';
 import { SpatialCard, Toggle, fmtMinutes, fmtDate, fmtTime, EmptyIcon } from '../ui.jsx';
+import DataModal from '../DataModal.jsx';
 
 /**
  * Connected device's installed apps: icon, label, package name, usage time,
@@ -23,6 +24,10 @@ export default function AppsPanel({ deviceId, conn }) {
   const [notifs, setNotifs] = useState(null);
   // pending overlay image drafts: package -> dataURL
   const [imageDrafts, setImageDrafts] = useState({});
+  // enforcement permission report (which blocking paths are active on the child)
+  const [perms, setPerms] = useState(null);
+  // app-history viewer: {appLabel, rows} | null
+  const [history, setHistory] = useState(null);
 
   const load = async () => {
     setBusy(true);
@@ -42,6 +47,17 @@ export default function AppsPanel({ deviceId, conn }) {
   };
 
   useEffect(() => { load(); }, [deviceId]);
+
+  // Which enforcement paths are live on the child (accessibility = instant,
+  // usage access = 12s polling). Both off = restrictions cannot fire.
+  useEffect(() => {
+    if (conn !== 'connected') return;
+    let alive = true;
+    command('get_permission_status', {}, 25_000)
+      .then((r) => { if (alive) setPerms(r?.permissions || null); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [conn, deviceId]);
 
   async function requestSync() {
     setMsg('');
@@ -120,6 +136,33 @@ export default function AppsPanel({ deviceId, conn }) {
     }
   }
 
+  // Push the saved overlay (text + picture) to the child screen RIGHT NOW.
+  async function sendOverlayNow(app) {
+    setMsg('');
+    const text = drafts[app.package_name] ?? restrictions[app.package_name]?.overlay_text ?? 'This app is blocked by your parent.';
+    const img = imageDrafts[app.package_name] ?? restrictions[app.package_name]?.overlay_image ?? null;
+    try {
+      await command('force_overlay', { packageName: app.package_name, text, imageB64: img || '' }, 30_000);
+      setMsg(`Overlay pushed to the child screen for ${app.app_label}.`);
+    } catch (e) {
+      setMsg(`Overlay push failed: ${e.message}`);
+    }
+  }
+
+  // App history: usage events timeline filtered to this package (7 days).
+  async function openAppHistory(app) {
+    setMsg('');
+    try {
+      const res = await command('get_usage_timeline', { days: 7 }, 30_000);
+      const rows = (res?.items || [])
+        .filter((i) => i.packageName === app.package_name)
+        .map((i) => ({ when: fmtTime(i.ts), action: 'Opened' }));
+      setHistory({ appLabel: app.app_label, rows });
+    } catch (e) {
+      setMsg(`App history failed: ${e.message}`);
+    }
+  }
+
   const filtered = (apps || []).filter((a) =>
     !query ||
     a.app_label.toLowerCase().includes(query.toLowerCase()) ||
@@ -169,6 +212,20 @@ export default function AppsPanel({ deviceId, conn }) {
       {msg && <p className="mb-3 border-2 border-space-600 bg-space-700/60 px-3 py-2 font-mono text-[11px] text-slate-300">{msg}</p>}
       {busy && <p className="mb-3 font-mono text-[11px] text-neon-dim">Working…</p>}
 
+      {/* enforcement status — app blocking needs accessibility (instant) or
+          usage access (12s polling) on the child; both off = nothing fires */}
+      {perms && (
+        <div className={`mb-3 flex flex-wrap items-center gap-2 border-2 px-3 py-2 font-mono text-[10px] uppercase tracking-wider ${perms.accessibility || perms.usageAccess ? 'border-neon/40 bg-neon/5 text-neon' : 'border-hazard/60 bg-hazard/10 text-hazard'}`}>
+          <ShieldAlert className="h-3.5 w-3.5" />
+          {perms.accessibility || perms.usageAccess ? (
+            <>Blocking active — {perms.accessibility ? 'instant (accessibility)' : 'polling (usage access, ~12s)'}</>
+          ) : (
+            <>App blocking is NOT firing: enable Accessibility or Usage Access on the child (Settings → Permissions)</>
+          )}
+          {!perms.accessibility && perms.usageAccess && <span className="text-slate-500">· enable accessibility for instant blocking</span>}
+        </div>
+      )}
+
       {filtered.length === 0 ? (
         <p className="py-8 text-center font-mono text-xs uppercase text-slate-600">No apps match.</p>
       ) : (
@@ -203,6 +260,13 @@ export default function AppsPanel({ deviceId, conn }) {
                     title="Show captured notifications from this app"
                   >
                     <Bell className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    className="btn-ghost px-2 py-1.5 text-[10px]"
+                    onClick={() => openAppHistory(a)}
+                    title="Show when this app was opened (last 7 days)"
+                  >
+                    <History className="h-3.5 w-3.5" />
                   </button>
                   <Toggle
                     checked={restricted}
@@ -247,7 +311,15 @@ export default function AppsPanel({ deviceId, conn }) {
                         </div>
                       )}
                       <button
-                        className="btn-primary ml-auto px-3 py-1.5 text-[10px]"
+                        className="btn-ghost ml-auto px-3 py-1.5 text-[10px]"
+                        disabled={busy || conn !== 'connected'}
+                        onClick={() => sendOverlayNow(a)}
+                        title="Show this overlay on the child's screen right now (custom text + picture)"
+                      >
+                        <Send className="h-3.5 w-3.5" /> Send now
+                      </button>
+                      <button
+                        className="btn-primary px-3 py-1.5 text-[10px]"
                         disabled={busy}
                         onClick={() => setRestriction(a, true, drafts[a.package_name] ?? r?.overlay_text)}
                         title="Save overlay text + picture"
@@ -261,6 +333,21 @@ export default function AppsPanel({ deviceId, conn }) {
             );
           })}
         </ul>
+      )}
+
+      {/* ===== app history ===== */}
+      {history && (
+        <DataModal
+          title={`App history — ${history.appLabel}`}
+          subtitle="opens in the last 7 days (from the child device)"
+          columns={[
+            { key: 'when', label: 'When', width: '170px' },
+            { key: 'action', label: 'Event', width: '100px' },
+          ]}
+          rows={history.rows}
+          onClose={() => setHistory(null)}
+          emptyText="No opens recorded — the child needs Usage Access for history."
+        />
       )}
 
       {/* ===== per-app notification history ===== */}

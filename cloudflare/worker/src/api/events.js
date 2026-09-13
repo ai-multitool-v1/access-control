@@ -3,9 +3,10 @@
 // notify the parent (Telegram / FCM).
 
 import { json, HttpError, readJson, str } from '../lib/respond.js';
-import { sbRest, sbInsert } from '../lib/supabase.js';
+import { sbRest, sbInsert, sbUpdate } from '../lib/supabase.js';
 import { ownDevice } from './apps.js';
 import { notifyCriticalEvent } from '../notify/events.js';
+import { pushParentEvent } from '../lib/devicehub.js';
 
 const TYPES = new Set([
   'app_open', 'app_blocked', 'zone_exit', 'sos', 'permission',
@@ -30,6 +31,14 @@ export async function pushEvent(request, env, device) {
     package_name: str(body.packageName, 160) || null,
     detail: body.detail && typeof body.detail === 'object' && !Array.isArray(body.detail) ? body.detail : {},
   }, false);
+
+  // Live fan-out to every connected parent socket (dashboard toast + bell).
+  pushParentEvent(env, device.id, type, {
+    title,
+    packageName: body.packageName || null,
+    severity,
+    detail: body.detail || {},
+  }).catch(() => {});
 
   if (severity === 'critical') {
     notifyCriticalEvent(env, device.parent_id, device.id, type, title).catch(() => {});
@@ -58,18 +67,51 @@ export async function pushEventsBatch(request, env, device) {
         detail: it.detail && typeof it.detail === 'object' && !Array.isArray(it.detail) ? it.detail : {},
       }, false);
       stored += 1;
+      // Live fan-out for captured notifications so parents get an instant
+      // toast on the dashboard even when the child posts over REST.
+      if (type === 'notification') {
+        pushParentEvent(env, device.id, 'notification', {
+          title,
+          packageName: it.packageName || null,
+          severity: it.severity || 'info',
+          detail: it.detail || {},
+        }).catch(() => {});
+      }
     } catch { /* keep going — best effort */ }
   }
   return json({ ok: true, stored });
 }
 
-export async function listEvents(env, parent, deviceId, limit, type) {
+export async function listEvents(env, parent, deviceId, limit, type, sort, unread) {
   await ownDevice(env, parent, deviceId);
   const lim = Math.max(1, Math.min(200, Number(limit) || 60));
   const typeFilter = TYPES.has(type) ? `&type=eq.${type}` : '';
+  const unreadFilter = unread === 'true' ? '&read_at=is.null' : '';
+  const order = sort === 'asc' ? 'created_at.asc' : 'created_at.desc';
   const rows = await sbRest(
     env,
-    `device_events?device_id=eq.${deviceId}${typeFilter}&select=id,type,severity,title,package_name,detail,created_at&order=created_at.desc&limit=${lim}`
+    `device_events?device_id=eq.${deviceId}${typeFilter}${unreadFilter}&select=id,type,severity,title,package_name,detail,read_at,created_at&order=${order}&limit=${lim}`
   );
-  return json({ ok: true, events: rows });
+  const unreadCount = await sbRest(
+    env,
+    `device_events?device_id=eq.${deviceId}&read_at=is.null&select=id`
+  ).catch(() => []);
+  return json({ ok: true, events: rows, unreadCount: Array.isArray(unreadCount) ? unreadCount.length : 0 });
+}
+
+/** Mark events read: {ids:[...]} or {all:true}. Returns how many rows changed. */
+export async function markEventsRead(request, env, parent, deviceId) {
+  await ownDevice(env, parent, deviceId);
+  const body = await readJson(request);
+  const now = new Date().toISOString();
+  if (body.all) {
+    await sbUpdate(env, 'device_events', `device_id=eq.${deviceId}&read_at=is.null`, { read_at: now });
+    return json({ ok: true, marked: 'all' });
+  }
+  const ids = Array.isArray(body.ids)
+    ? body.ids.map((x) => String(x).replace(/[^0-9a-fA-F-]/g, '')).filter((x) => /^[0-9a-fA-F-]{36}$/.test(x)).slice(0, 100)
+    : [];
+  if (ids.length === 0) throw new HttpError(400, 'bad_request', 'ids or all required');
+  await sbUpdate(env, 'device_events', `device_id=eq.${deviceId}&id=in.(${ids.join(',')})&read_at=is.null`, { read_at: now });
+  return json({ ok: true, marked: ids.length });
 }

@@ -4,7 +4,7 @@ import { json, err, HttpError, readJson, str, clientIp } from '../lib/respond.js
 import { validateParentToken, validateDeviceToken, bearerToken } from '../auth/auth.js';
 import { handlePairingGenerate, handlePairingClaim } from '../api/pairing.js';
 import {
-  listDevices, getDevice, revokeDevice, registerFcm, deviceAudit, subscriptionStatus, deviceSettings,
+  listDevices, getDevice, revokeDevice, registerFcm, deviceAudit, subscriptionStatus, deviceSettings, childPolicies,
 } from '../api/devices.js';
 import {
   listPolicies, upsertPolicy, deletePolicy,
@@ -17,7 +17,7 @@ import { handleSignup } from '../api/auth.js';
 import { pushApps, getApps } from '../api/apps.js';
 import { listRestrictions, upsertRestriction, childRestrictions } from '../api/restrictions.js';
 import { listZones, createZone, updateZone, deleteZone, childZones } from '../api/zones.js';
-import { pushEvent, pushEventsBatch, listEvents } from '../api/events.js';
+import { pushEvent, pushEventsBatch, listEvents, markEventsRead } from '../api/events.js';
 import { pushHardware, getHardware } from '../api/hardware.js';
 import { pushMedia, getMedia, deleteMedia } from '../api/media.js';
 
@@ -115,7 +115,12 @@ export async function handleApi(request, env) {
   m = p.match(/^\/api\/devices\/([0-9a-fA-F-]{36})\/events$/);
   if (m && method === 'GET') {
     const parent = await requireParent(request, env);
-    return listEvents(env, parent, m[1], url.searchParams.get('limit'), url.searchParams.get('type'));
+    return listEvents(env, parent, m[1], url.searchParams.get('limit'), url.searchParams.get('type'), url.searchParams.get('sort'), url.searchParams.get('unread'));
+  }
+  m = p.match(/^\/api\/devices\/([0-9a-fA-F-]{36})\/events\/read$/);
+  if (m && method === 'POST') {
+    const parent = await requireParent(request, env);
+    return markEventsRead(request, env, parent, m[1]);
   }
   m = p.match(/^\/api\/devices\/([0-9a-fA-F-]{36})\/hardware$/);
   if (m && method === 'GET') {
@@ -173,6 +178,10 @@ export async function handleApi(request, env) {
   if (p === '/api/child/restrictions' && method === 'GET') {
     const device = await requireDevice(request, env);
     return childRestrictions(env, device);
+  }
+  if (p === '/api/child/policies' && method === 'GET') {
+    const device = await requireDevice(request, env);
+    return childPolicies(env, device);
   }
   if (p === '/api/child/zones' && method === 'GET') {
     const device = await requireDevice(request, env);

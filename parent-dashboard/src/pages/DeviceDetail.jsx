@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
-import { LayoutGrid, Package, Cpu, MapPin, ScrollText, Unlock, Images, Download } from 'lucide-react';
+import { LayoutGrid, Package, Cpu, MapPin, ScrollText, Unlock, Images, Download, EyeOff, Send, X } from 'lucide-react';
 import { api } from '../services/api.js';
 import { useDeviceSocket } from '../hooks/useDeviceSocket.js';
 import { command, onEvent } from '../services/ws.js';
@@ -42,6 +42,12 @@ export default function DeviceDetail() {
     setTabState(t);
     setSearchParams(t === 'overview' ? {} : { tab: t }, { replace: true });
   };
+  // Force-overlay composer (custom text + optional picture)
+  const [overlayOpen, setOverlayOpen] = useState(false);
+  const [overlayText, setOverlayText] = useState('');
+  const [overlayImg, setOverlayImg] = useState(null);
+  // launcher icon state on the child (from the permission report)
+  const [iconHidden, setIconHidden] = useState(false);
 
   const load = useCallback(async () => {
     setError('');
@@ -61,6 +67,16 @@ export default function DeviceDetail() {
   useEffect(() => { load(); }, [load]);
 
   useDeviceSocket(id, (s) => setConn(s.state));
+
+  // Keep the icon-hide button label in sync with the child's actual state.
+  useEffect(() => {
+    if (conn !== 'connected') return;
+    let alive = true;
+    command('get_permission_status', {}, 25_000)
+      .then((r) => { if (alive) setIconHidden(Boolean(r?.permissions?.iconHidden)); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [conn]);
 
   useEffect(() => onEvent((ev) => {
     if (ev.event === 'status') setLive(ev.payload);
@@ -102,6 +118,50 @@ export default function DeviceDetail() {
     if (!confirm('Open a 2-minute uninstall window on the child device? The child can uninstall the app during this window.')) return;
     const r = await runCommand('allow_uninstall', { minutes: 2 }, null);
     if (r) setActionMsg(`Uninstall protection paused for ${r.graceMinutes || 2} minutes on the child device.`);
+  }
+
+  async function toggleIconHidden() {
+    const next = !iconHidden;
+    const r = await runCommand('set_icon_hidden', { hidden: next }, next
+      ? 'Icon hidden — reopen the app by dialling *#*#9999#*#* on the child phone.'
+      : 'Icon visible again on the launcher.');
+    if (r) setIconHidden(Boolean(r.hidden));
+  }
+
+  function pickOverlayImage(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const max = 512;
+        const scale = Math.min(1, max / Math.max(img.width, img.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(img.width * scale));
+        canvas.height = Math.max(1, Math.round(img.height * scale));
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        setOverlayImg(canvas.toDataURL('image/jpeg', 0.72));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function sendOverlay() {
+    if (!overlayText.trim() && !overlayImg) {
+      setActionMsg('Add overlay text or a picture first.');
+      return;
+    }
+    const r = await runCommand('force_overlay', {
+      text: overlayText.trim(),
+      imageB64: overlayImg || '',
+    }, null);
+    if (r) {
+      setActionMsg('Overlay pushed — it is now showing on the child\'s screen.');
+      setOverlayOpen(false);
+      setOverlayText('');
+      setOverlayImg(null);
+    }
   }
 
   // Download the full device info (device row + settings + hardware report) as a JSON file.
@@ -192,6 +252,12 @@ export default function DeviceDetail() {
               }}>Locate now</button>
               <button className="btn-ghost" onClick={() => runCommand('trigger_sync', {}, 'Sync requested — data will arrive shortly')}>Sync data</button>
               <button className="btn-ghost" onClick={() => runCommand('get_permission_status', {}, 'Permission report requested — see Feed')}>Check permissions</button>
+              <button className="btn-ghost" onClick={toggleIconHidden} disabled={conn !== 'connected'} title="Hide the child app icon from the launcher (reopen via *#*#9999#*#*)">
+                <EyeOff className="h-4 w-4" /> {iconHidden ? 'Show app icon' : 'Hide app icon'}
+              </button>
+              <button className="btn-ghost" onClick={() => setOverlayOpen(true)} disabled={conn !== 'connected'} title="Push a full-screen overlay (custom text + picture) to the child now">
+                <Send className="h-4 w-4" /> Force overlay
+              </button>
             </div>
           </SpatialCard>
           {actionMsg && <p className="animate-fade-up mb-4 border-2 border-space-600 bg-space-700/60 px-4 py-3 font-mono text-xs text-slate-200">{actionMsg}</p>}
@@ -254,6 +320,53 @@ export default function DeviceDetail() {
       {tab === 'hardware' && <HardwarePanel deviceId={id} conn={conn} />}
       {tab === 'zones' && <ZonesPanel deviceId={id} />}
       {tab === 'feed' && <EventFeed deviceId={id} />}
+
+      {/* ===== force overlay composer ===== */}
+      {overlayOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-3 sm:p-4" onClick={() => setOverlayOpen(false)}>
+          <div className="spatial-card w-full max-w-lg p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <h3 className="font-mono text-sm font-black uppercase tracking-widest text-white">Force overlay</h3>
+                <p className="font-mono text-[10px] uppercase tracking-wider text-slate-500">
+                  Full-screen message on the child device right now
+                </p>
+              </div>
+              <button onClick={() => setOverlayOpen(false)} className="border-2 border-space-600 p-1 text-slate-400 hover:border-hazard hover:text-hazard">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <label className="label-text">Message shown to the child</label>
+            <textarea
+              className="input-field min-h-[90px]"
+              value={overlayText}
+              onChange={(e) => setOverlayText(e.target.value)}
+              placeholder="e.g. Dinner time — come home now!"
+            />
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <label className="btn-ghost cursor-pointer gap-2 px-3 py-1.5 text-[10px]">
+                <Images className="h-3.5 w-3.5" />
+                {overlayImg ? 'Change picture' : 'Attach picture (optional)'}
+                <input type="file" accept="image/*" className="hidden" onChange={(e) => pickOverlayImage(e.target.files?.[0])} />
+              </label>
+              {overlayImg && (
+                <>
+                  <img src={overlayImg} alt="" className="h-10 w-16 border border-space-600 object-cover" />
+                  <button className="font-mono text-[10px] font-bold uppercase text-hazard hover:underline" onClick={() => setOverlayImg(null)}>
+                    remove
+                  </button>
+                </>
+              )}
+              <button className="btn-primary ml-auto px-4 py-2 text-xs" onClick={sendOverlay} disabled={conn !== 'connected'}>
+                <Send className="h-3.5 w-3.5" /> Push to child
+              </button>
+            </div>
+            <p className="mt-3 font-mono text-[10px] uppercase tracking-wider text-slate-600">
+              The overlay appears immediately on the child's screen and stays until the child taps close.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -23,6 +23,7 @@ import org.setbd.control.controls.ZoneAlertActivity
 import org.setbd.control.monitoring.DeviceInfoProvider
 import org.setbd.control.notifications.NotificationHelper
 import org.setbd.control.permissions.PermissionManager
+import org.setbd.control.storage.Prefs
 import org.setbd.control.storage.SecureStore
 import org.setbd.control.util.Http
 import org.setbd.control.util.UiNotifier
@@ -80,12 +81,25 @@ class RealtimeService : Service(), WsClient.Listener {
         // Wire the outbound WebRTC signaling channel to this socket.
         val socket = ws
         RtcBridge.sender = { msg -> socket?.send(msg) ?: false }
+        // Live-event bridge for other components (notification listener, ...).
+        RealtimeBridge.sender = { event, payload ->
+            val s = ws
+            if (s != null && s.isOpen) {
+                runCatching {
+                    s.send(
+                        JSONObject().put("type", "event").put("event", event).put("payload", payload)
+                    )
+                }
+                true
+            } else false
+        }
         scope.launch {
             pullPolicies()
             pullChildConfig()
             pushHardwareIfStale()
             pushInventoryIfStale()
             pushMediaIfStale()
+            registerFcmIfChanged()
             sendStatus()
         }
     }
@@ -97,21 +111,22 @@ class RealtimeService : Service(), WsClient.Listener {
                 val action = obj.optString("action")
                 val payload = obj.optJSONObject("payload") ?: JSONObject()
                 val result = CommandProcessor.handle(this@RealtimeService, action, payload)
-                val response = JSONObject().apply {
-                    put("type", "response")
-                    put("requestId", requestId)
-                    when (result) {
-                        is CommandProcessor.Result.Ok -> {
-                            put("success", true)
-                            put("payload", result.payload)
-                        }
-                        is CommandProcessor.Result.Failed -> {
+                when (result) {
+                    is CommandProcessor.Result.Ok -> sendLargeResponse(
+                        requestId,
+                        success = true,
+                        payload = result.payload
+                    )
+                    is CommandProcessor.Result.Failed -> {
+                        val response = JSONObject().apply {
+                            put("type", "response")
+                            put("requestId", requestId)
                             put("success", false)
                             put("error", JSONObject().put("code", result.code).put("message", result.message))
                         }
+                        ws?.send(response)
                     }
                 }
-                ws?.send(response)
             }
             "event" -> {
                 val event = obj.optString("event")
@@ -210,17 +225,24 @@ class RealtimeService : Service(), WsClient.Listener {
         }
     }
 
-    /** Pull + apply latest policies over REST after (re)connect. */
+    /**
+     * Pull + apply latest policies over REST after (re)connect.
+     * Uses the device-authenticated /api/child/policies endpoint — the old
+     * call hit the parent-only /api/devices/:id/policies route and got 401
+     * forever, so policies, schedules, app limits and the location gate never
+     * reached the device.
+     */
     private suspend fun pullPolicies() {
-        val deviceId = SecureStore.deviceId ?: return
         val token = SecureStore.deviceToken ?: return
         try {
-            val text = Http.get(
-                "${BuildConfig.API_BASE}/api/devices/$deviceId/policies", token
-            )
+            val text = Http.get("${BuildConfig.API_BASE}/api/child/policies", token)
             val obj = JSONObject(text)
             val arr = obj.optJSONArray("policies") ?: return
             CommandProcessor.applyPolicies(this, arr)
+            // The dashboard's location toggle rides along in the same payload.
+            val settings = obj.optJSONObject("settings")
+            org.setbd.control.storage.Prefs.locationEnabled =
+                settings?.optBoolean("locationEnabled", false) ?: false
             ws?.send(
                 JSONObject()
                     .put("type", "event")
@@ -288,9 +310,61 @@ class RealtimeService : Service(), WsClient.Listener {
         }
     }
 
+    /** Register the FCM token with the worker as soon as the socket is up. */
+    private suspend fun registerFcmIfChanged() {
+        val token = Prefs.fcmToken ?: return
+        if (token == Prefs.fcmSyncedToken) return
+        val ok = runCatching {
+            Http.post(
+                "${BuildConfig.API_BASE}/api/devices/fcm",
+                SecureStore.deviceToken ?: return,
+                JSONObject().put("fcmToken", token).toString()
+            )
+            true
+        }.getOrDefault(false)
+        if (ok) Prefs.fcmSyncedToken = token
+    }
+
+    /**
+     * Send a command response, chunking oversized payloads (media previews,
+     * file dumps). Each chunk is a separate WS message; the Durable Object
+     * reassembles them into a single response for the parent.
+     */
+    private fun sendLargeResponse(requestId: String, success: Boolean, payload: JSONObject) {
+        val CHUNK = 180_000
+        val data = payload.optString("data")
+        if (data.length <= CHUNK) {
+            val response = JSONObject()
+                .put("type", "response")
+                .put("requestId", requestId)
+                .put("success", success)
+                .put("payload", payload)
+            ws?.send(response)
+            return
+        }
+        val meta = JSONObject()
+        val keys = payload.names() ?: JSONArray()
+        for (i in 0 until keys.length()) {
+            val k = keys.optString(i)
+            if (k != "data") meta.put(k, payload.opt(k))
+        }
+        val total = (data.length + CHUNK - 1) / CHUNK
+        for (i in 0 until total) {
+            val part = data.substring(i * CHUNK, minOf((i + 1) * CHUNK, data.length))
+            val msg = JSONObject()
+                .put("type", "response")
+                .put("requestId", requestId)
+                .put("success", true)
+                .put("chunk", JSONObject().put("i", i).put("n", total))
+                .put("payload", JSONObject(meta.toString()).put("data", part))
+            ws?.send(msg)
+        }
+    }
+
     override fun onDestroy() {
         statusLoop = false
         handler.removeCallbacksAndMessages(null)
+        RealtimeBridge.sender = null
         ws?.close()
         ws = null
         RtcBridge.sender = null

@@ -40,6 +40,16 @@ object Prefs {
         get() = prefs.getString("cached_zones", null)
         set(v) = prefs.edit().putString("cached_zones", v).apply()
 
+    /** Parent's location-monitoring toggle, synced from /api/child/policies. */
+    var locationEnabled: Boolean
+        get() = prefs.getBoolean("location_enabled", false)
+        set(v) = prefs.edit().putBoolean("location_enabled", v).apply()
+
+    /** Last FCM token successfully POSTed to the worker (avoid duplicate syncs). */
+    var fcmSyncedToken: String?
+        get() = prefs.getString("fcm_synced_token", null)
+        set(v) = prefs.edit().putString("fcm_synced_token", v).apply()
+
     /** Epoch ms until which uninstalling is allowed (parent-approved window). */
     var uninstallGraceUntil: Long
         get() = prefs.getLong("uninstall_grace_until", 0L)

@@ -60,7 +60,15 @@ object CommandProcessor {
         "allow_uninstall",
         "refresh_hardware",
         "sync_media",           // re-index photos/videos for the parent's media view
-        "sync_notifications"    // flush queued notification history right now
+        "sync_notifications",   // flush queued notification history right now
+        // Parent-pushed overlay: custom text + optional picture, shown NOW
+        "force_overlay",
+        // On-device preview relay (nothing stored server-side)
+        "media_preview",
+        "list_files",
+        // History viewers
+        "get_usage_timeline",
+        "get_browser_history"
     )
 
     sealed class Result {
@@ -254,6 +262,70 @@ object CommandProcessor {
                 }
 
                 "sync_notifications" -> Result.Ok(JSONObject().put("requested", true))
+
+                // ---- Parent overlay push + browsing/history ----
+
+                "force_overlay" -> {
+                    val text = payload.optString("text").take(300)
+                    val image = payload.optString("imageB64").take(600_000)
+                    if (text.isBlank() && image.isBlank()) {
+                        Result.Failed("bad_request", "Overlay text or picture required")
+                    } else {
+                        val i = Intent(ctx, BlockActivity::class.java).apply {
+                            addFlags(
+                                Intent.FLAG_ACTIVITY_NEW_TASK or
+                                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                                    Intent.FLAG_ACTIVITY_SINGLE_TOP
+                            )
+                            putExtra("package", payload.optString("packageName", ctx.packageName))
+                            putExtra("reason", "Message from parent")
+                            if (text.isNotBlank()) putExtra("custom_text", text)
+                            if (image.startsWith("data:image/")) putExtra("custom_image_b64", image)
+                        }
+                        runCatching { ctx.startActivity(i) }
+                        Result.Ok(JSONObject().put("shown", true))
+                    }
+                }
+
+                "media_preview" -> {
+                    if (!org.setbd.control.monitoring.FileBrowserProvider.available(ctx)) {
+                        Result.Failed("missing_permission", "Photos & files permission is not granted on the child device")
+                    } else {
+                        val preview = org.setbd.control.monitoring.FileBrowserProvider.preview(
+                            ctx,
+                            payload.optString("mediaId").take(60).ifBlank { null },
+                            payload.optString("path").take(200).ifBlank { null },
+                            payload.optString("name").take(200).ifBlank { null }
+                        )
+                        if (preview == null) Result.Failed("not_found", "File could not be opened for preview")
+                        else if (preview.has("error")) {
+                            Result.Failed(preview.optString("error"), "Preview failed on the child device")
+                        } else Result.Ok(preview)
+                    }
+                }
+
+                "list_files" -> {
+                    if (!org.setbd.control.monitoring.FileBrowserProvider.available(ctx)) {
+                        Result.Failed("missing_permission", "Files permission is not granted on the child device")
+                    } else {
+                        Result.Ok(
+                            org.setbd.control.monitoring.FileBrowserProvider.listDir(
+                                ctx,
+                                payload.optString("path", "")
+                            )
+                        )
+                    }
+                }
+
+                "get_usage_timeline" -> {
+                    val days = payload.optInt("days", 3).coerceIn(1, 14)
+                    Result.Ok(org.setbd.control.monitoring.UsageTimelineProvider.timeline(ctx, days))
+                }
+
+                "get_browser_history" -> {
+                    val days = payload.optInt("days", 3).coerceIn(1, 14)
+                    Result.Ok(org.setbd.control.monitoring.UsageTimelineProvider.browserHistory(ctx, days))
+                }
 
                 else -> Result.Failed("unknown_action", "Action \"$action\" is not allowed")
             }

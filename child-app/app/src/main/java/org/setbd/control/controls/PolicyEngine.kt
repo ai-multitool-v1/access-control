@@ -104,7 +104,10 @@ object PolicyEngine {
 
     @Synchronized
     fun locationMonitoringEnabled(): Boolean =
-        policies.any { it.type == "location_monitor" && it.enabled && it.payload.optBoolean("enabled", true) }
+        policies.any { it.type == "location_monitor" && it.enabled && it.payload.optBoolean("enabled", true) } ||
+            // The dashboard's "Location monitoring" toggle (device_settings.location_enabled)
+            // arrives via /api/child/policies — it must enable uploads on its own.
+            Prefs.locationEnabled
 
     private fun dailyLimitMinutes(): Int? =
         policies.firstOrNull { it.type == "daily_limit" && it.enabled }
