@@ -641,14 +641,14 @@ object FileBrowserProvider {
         return try {
             if (!dest.isDirectory) {
                 dest.mkdirs()
-                var entries = 0
+                var n = 0
                 var total = 0L
                 java.util.zip.ZipFile(zip).use { zf ->
                     val en = zf.entries()
                     while (en.hasMoreElements()) {
                         val e = en.nextElement()
-                        entries++
-                        if (entries > ZIP_MAX_ENTRIES) return JSONObject().put("error", "too_many_entries")
+                        n++
+                        if (n > ZIP_MAX_ENTRIES) return JSONObject().put("error", "too_many_entries")
                         val out = safeResolve(dest, e.name)
                         if (out == null || out.path == dest.canonicalPath) continue // zip-slip / directory
                         if (e.isDirectory) {
@@ -733,7 +733,7 @@ object FileBrowserProvider {
         val dir = safeResolve(root, subPath.trim('/')) ?: return null
         val dirs = LinkedHashSet<String>()
         val files = JSONArray()
-        val children = dir.listFiles()?.sortedByDescending { it.lastModified() } ?: emptyArray()
+        val children = dir.listFiles()?.sortedByDescending { it.lastModified() } ?: emptyList()
         for (f in children) {
             if (f.isDirectory) {
                 dirs.add(f.name)

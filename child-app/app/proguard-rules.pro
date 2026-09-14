@@ -13,6 +13,13 @@
 -keepattributes *Annotation*
 -keepattributes Signature,InnerClasses,EnclosingMethod
 -dontwarn org.slf4j.**
+# Third-party optional deps commonly flagged by R8 full mode — all optional at runtime
+-dontwarn com.google.errorprone.annotations.**
+-dontwarn javax.annotation.**
+-dontwarn org.codehaus.mojo.animal_sniffer.**
+-dontwarn com.google.api.client.**
+-dontwarn com.google.auto.value.**
+-dontwarn org.checkerframework.**
 
 # ─── WebRTC native bindings — reflection-heavy, keep everything ────────────
 -keep class org.webrtc.** { *; }
