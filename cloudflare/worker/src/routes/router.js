@@ -1,7 +1,7 @@
 // Router: /api/* REST endpoints.
 
 import { json, err, HttpError, readJson, str, clientIp } from '../lib/respond.js';
-import { validateParentToken, validateDeviceToken, bearerToken } from '../auth/auth.js';
+import { validateParentToken, validateDeviceToken, bearerToken, checkBanned } from '../auth/auth.js';
 import { handlePairingGenerate, handlePairingClaim } from '../api/pairing.js';
 import {
   listDevices, getDevice, revokeDevice, registerFcm, deviceAudit, subscriptionStatus, deviceSettings, childPolicies,
@@ -13,18 +13,30 @@ import { getUsage, pushUsage } from '../api/usage.js';
 import { getLocations, pushLocation } from '../api/location.js';
 import { getNotificationSettings, saveNotificationSettings, sendTestPush } from '../api/notifications.js';
 import { getTelegramSettings, saveTelegramSettings, testTelegram } from '../api/telegram.js';
-import { handleSignup } from '../api/auth.js';
-import { pushApps, getApps } from '../api/apps.js';
-import { listRestrictions, upsertRestriction, childRestrictions } from '../api/restrictions.js';
-import { listZones, createZone, updateZone, deleteZone, childZones } from '../api/zones.js';
-import { pushEvent, pushEventsBatch, listEvents, markEventsRead } from '../api/events.js';
 import { pushHardware, getHardware } from '../api/hardware.js';
 import { pushMedia, getMedia, deleteMedia } from '../api/media.js';
 import { pushBrowserHistory, getBrowserHistory } from '../api/browser.js';
+import { handleSignup, handleAuthLog } from '../api/auth.js';
+import { handleCaptchaNew, handleCaptchaVerify } from '../api/captcha.js';
+import {
+  handleAdminLogin, handleAdminUsers, handleAdminRemoveUser,
+  handleAdminBan, handleAdminUnban, handleAdminSecurity, requireAdmin,
+} from '../api/admin.js';
+import { listRestrictions, upsertRestriction, childRestrictions } from '../api/restrictions.js';
+import { listZones, createZone, updateZone, deleteZone, childZones } from '../api/zones.js';
+import { pushEvent, pushEventsBatch, listEvents, markEventsRead } from '../api/events.js';
+import { pushApps, getApps } from '../api/apps.js';
 
 async function requireParent(request, env) {
   const user = await validateParentToken(bearerToken(request), env);
   if (!user) throw new HttpError(401, 'unauthorized', 'Sign in required');
+  // Banned parents are locked out of the whole API (with the reason text).
+  const ban = await checkBanned(env, user.id);
+  if (ban) {
+    throw new HttpError(403, 'account_banned', ban.reason
+      ? `Your account has been suspended. Reason: ${ban.reason}`
+      : 'Your account has been suspended.');
+  }
   return user;
 }
 
@@ -42,6 +54,41 @@ export async function handleApi(request, env) {
   // ---- auth (signup needs NO email verification) ----
   if (p === '/api/auth/signup' && method === 'POST') {
     return handleSignup(request, env);
+  }
+  if (p === '/api/auth/log' && method === 'POST') {
+    return handleAuthLog(request, env);
+  }
+
+  // ---- captcha (math challenge, signed one-time token) ----
+  if (p === '/api/captcha/new' && method === 'GET') {
+    return handleCaptchaNew(request, env);
+  }
+  if (p === '/api/captcha/verify' && method === 'POST') {
+    return handleCaptchaVerify(request, env);
+  }
+
+  // ---- admin (/setbd dashboard) ----
+  if (p.startsWith('/api/admin/')) {
+    if (p === '/api/admin/login' && method === 'POST') {
+      return handleAdminLogin(request, env);
+    }
+    await requireAdmin(request, env);
+    if (p === '/api/admin/users' && method === 'GET') {
+      return handleAdminUsers(env);
+    }
+    if (p === '/api/admin/users/remove' && method === 'POST') {
+      return handleAdminRemoveUser(request, env);
+    }
+    if (p === '/api/admin/users/ban' && method === 'POST') {
+      return handleAdminBan(request, env);
+    }
+    if (p === '/api/admin/users/unban' && method === 'POST') {
+      return handleAdminUnban(request, env);
+    }
+    if (p === '/api/admin/security' && method === 'GET') {
+      return handleAdminSecurity(env);
+    }
+    throw new HttpError(404, 'not_found', 'Unknown admin endpoint');
   }
 
   // ---- pairing ----

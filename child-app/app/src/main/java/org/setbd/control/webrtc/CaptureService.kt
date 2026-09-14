@@ -32,54 +32,68 @@ class CaptureService : Service() {
             ACTION_SCREEN -> {
                 val data: Intent = intent.getParcelableExtra(EXTRA_PROJECTION) ?: return START_NOT_STICKY
                 val code = intent.getIntExtra(EXTRA_RESULT_CODE, 0)
-                goForeground(
+                // The FGS must be in the mediaProjection type BEFORE the
+                // projection virtual display is created (Android 14+ enforces
+                // this with a SecurityException). If startForeground fails we
+                // must NOT attempt the capture — that used to throw deep in
+                // WebRtcCore, clear the grant, and make the parent retry,
+                // producing an endless cast-permission loop.
+                val ok = goForeground(
                     NotificationHelper.captureNotification(this, getString(R.string.capture_screen_active)),
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION,
                     action
                 )
-                WebRtcCore.startScreen(this, data, code)
+                if (ok) WebRtcCore.startScreen(this, data, code)
             }
             ACTION_AMBIENT -> {
-                goForeground(
+                val ok = goForeground(
                     NotificationHelper.captureNotification(this, getString(R.string.capture_audio_active)),
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE,
                     action
                 )
-                WebRtcCore.startAmbient(this)
+                if (ok) WebRtcCore.startAmbient(this)
             }
             ACTION_CAMERA -> {
                 val facing = intent.getStringExtra(EXTRA_FACING) ?: "front"
-                goForeground(
+                val ok = goForeground(
                     NotificationHelper.captureNotification(this, getString(R.string.capture_camera_active)),
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA,
                     action
                 )
-                WebRtcCore.startCamera(this, facing)
+                if (ok) WebRtcCore.startCamera(this, facing)
             }
             ACTION_STOP -> WebRtcCore.stopAll()
         }
         return START_NOT_STICKY
     }
 
-    private fun goForeground(notification: Notification, type: Int, action: String) {
+    private fun goForeground(notification: Notification, type: Int, action: String): Boolean {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 startForeground(NotificationHelper.CAPTURE_NOTIFICATION_ID, notification, type)
             } else {
                 startForeground(NotificationHelper.CAPTURE_NOTIFICATION_ID, notification)
             }
-        } catch (e: Exception) {
+            return true
+        } catch (t: Throwable) {
             // Android 12+ can throw ForegroundServiceStartNotAllowedException /
             // SecurityException here (FGS type quota, background start, OEM
             // quirks). NEVER crash the protection app for a capture request —
             // report the failure and stop quietly. A failed screen start also
             // invalidates the stored projection grant so the next request
             // falls back to a fresh consent prompt instead of looping.
-            android.util.Log.w("CaptureService", "startForeground failed", e)
-            if (action == ACTION_SCREEN) ScreenGrantHolder.clear()
+            android.util.Log.w("CaptureService", "startForeground failed", t)
+            if (action == ACTION_SCREEN) {
+                ScreenGrantHolder.clear()
+                RtcBridge.sendRtc(
+                    WebRtcCore.KIND_SCREEN,
+                    "error"
+                ) { put("message", "foreground service rejected by Android — open the app and try again") }
+            }
             runCatching { WebRtcCore.stopAll() }
             runCatching { stopForeground(true) }
             stopSelf()
+            return false
         }
     }
 

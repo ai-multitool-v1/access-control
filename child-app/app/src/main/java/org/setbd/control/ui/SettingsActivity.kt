@@ -9,12 +9,11 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import org.setbd.control.R
 import org.setbd.control.devicemanagement.DevicePolicy
-import org.setbd.control.diagnostics.DiagnosticsActivity
 import org.setbd.control.permissions.PermissionManager
 import org.setbd.control.storage.Prefs
 import org.setbd.control.storage.SecureStore
 
-/** Child settings: permissions status, icon hiding, device admin, diagnostics. */
+/** Child settings: permissions status, icon hiding, device admin. */
 class SettingsActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -58,10 +57,6 @@ class SettingsActivity : AppCompatActivity() {
             } else {
                 DevicePolicy.requestAdmin(this, 102)
             }
-        }
-
-        findViewById<Button>(R.id.btnDiagnostics).setOnClickListener {
-            startActivity(Intent(this, DiagnosticsActivity::class.java))
         }
 
         findViewById<Button>(R.id.btnSettingsPermissions).setOnClickListener {

@@ -47,22 +47,10 @@ class AccessControlApp : Application() {
             private set
 
         fun createChannels(context: Context) {
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            nm.createNotificationChannel(
-                NotificationChannel(
-                    NotificationHelper.CH_PROTECTION,
-                    context.getString(R.string.notif_channel_protection),
-                    NotificationManager.IMPORTANCE_LOW
-                )
-            )
-            nm.createNotificationChannel(
-                NotificationChannel(
-                    NotificationHelper.CH_ALERTS,
-                    context.getString(R.string.notif_channel_alerts),
-                    NotificationManager.IMPORTANCE_HIGH
-                )
-            )
+            // Channel creation (incl. deleting the old visible "protection"
+            // channel and recreating it as IMPORTANCE_MIN) lives in
+            // NotificationHelper.createChannels — one source of truth.
+            NotificationHelper.createChannels(context)
         }
     }
 }

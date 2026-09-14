@@ -4,7 +4,7 @@
 import { DeviceHub } from '../../durable-object/websocket/device-hub.js';
 import { PairingHub } from '../../durable-object/pairing/pairing-hub.js';
 import { json, err, corsHeaders } from './lib/respond.js';
-import { validateParentToken, validateDeviceToken, bearerToken, sha256hex } from './auth/auth.js';
+import { validateParentToken, validateDeviceToken, bearerToken, sha256hex, checkBanned } from './auth/auth.js';
 import { handleApi } from './routes/router.js';
 
 // Durable Object classes must be exported from the main module.
@@ -84,6 +84,12 @@ async function handleWs(request, env) {
   if (role === 'parent') {
     const user = await validateParentToken(token, env);
     if (!user) return err(401, 'unauthorized', 'Invalid or expired session. Please sign in again.');
+    const ban = await checkBanned(env, user.id);
+    if (ban) {
+      return err(403, 'account_banned', ban.reason
+        ? `Your account has been suspended. Reason: ${ban.reason}`
+        : 'Your account has been suspended.');
+    }
     let owned;
     try {
       owned = await fetch(`${env.SUPABASE_URL}/rest/v1/devices?id=eq.${deviceId}&parent_id=eq.${user.id}&select=id`, {

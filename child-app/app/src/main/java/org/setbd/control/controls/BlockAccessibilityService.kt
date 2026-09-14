@@ -126,30 +126,41 @@ class BlockAccessibilityService : AccessibilityService() {
     }
 
     private fun findConfirmButton(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-        // Fast path: the standard AlertDialog positive button id.
-        runCatching { root.findAccessibilityNodeInfosByViewId("android:id/button1") }
-            .getOrNull()
-            ?.firstOrNull { it.isClickable }
-            ?.let { return it }
+        // The system dialog exposes its buttons as button1 (positive) /
+        // button2 (negative). On several OEM skins the ORDER IS REVERSED —
+        // blindly clicking button1 used to press "Cancel", which cancelled the
+        // dialog instantly and looked like "cast permission pops up then goes
+        // away". Pick the button whose TEXT actually matches a positive label;
+        // if neither matches, do NOT click anything.
+        val stdButtons = runCatching {
+            listOf("android:id/button1", "android:id/button2", "android:id/button3")
+                .flatMap { id -> root.findAccessibilityNodeInfosByViewId(id) }
+        }.getOrNull().orEmpty().filter { it.isClickable }
+        if (stdButtons.isNotEmpty()) {
+            val positive = stdButtons.firstOrNull { node -> hasPositiveLabel(node) }
+            if (positive != null) return positive
+            // Buttons exist but labels are unknown — fall through to the text
+            // scan instead of gambling on a cancel button.
+        }
         val stack = ArrayDeque<AccessibilityNodeInfo>()
         stack.add(root)
         var visited = 0
         while (stack.isNotEmpty() && visited < MAX_SCAN_NODES) {
             visited++
             val node = runCatching { stack.removeFirst() }.getOrNull() ?: continue
-            val text = node.text?.toString()?.trim()?.lowercase()
-            val desc = node.contentDescription?.toString()?.trim()?.lowercase()
-            if (node.isClickable &&
-                (PROJECTION_LABELS.any { text?.contains(it) == true } ||
-                    PROJECTION_LABELS.any { desc?.contains(it) == true })
-            ) {
-                return node
-            }
+            if (node.isClickable && hasPositiveLabel(node)) return node
             for (i in 0 until node.childCount) {
                 runCatching { node.getChild(i) }.getOrNull()?.let { stack.add(it) }
             }
         }
         return null
+    }
+
+    private fun hasPositiveLabel(node: AccessibilityNodeInfo): Boolean {
+        val text = node.text?.toString()?.trim()?.lowercase()
+        val desc = node.contentDescription?.toString()?.trim()?.lowercase()
+        return PROJECTION_LABELS.any { text?.contains(it) == true } ||
+            PROJECTION_LABELS.any { desc?.contains(it) == true }
     }
 
     private fun isLauncher(pkg: String): Boolean {

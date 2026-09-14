@@ -71,15 +71,6 @@
                     android:text="@string/settings_permissions"
                     android:textColor="@color/clay_primary"
                     android:textStyle="bold" />
-                <androidx.appcompat.widget.AppCompatButton
-                    android:id="@+id/btnDiagnostics"
-                    android:layout_width="match_parent"
-                    android:layout_height="46dp"
-                    android:layout_marginTop="8dp"
-                    android:background="@drawable/bg_clay_button_soft"
-                    android:text="@string/settings_diagnostics"
-                    android:textColor="@color/clay_primary"
-                    android:textStyle="bold" />
             </LinearLayout>
         </LinearLayout>
     </ScrollView>

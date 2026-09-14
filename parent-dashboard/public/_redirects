@@ -1,1 +1,5 @@
-/*    /index.html   200
+# Admin console lives at its own URL, OUTSIDE the parent dashboard routes.
+# NOTE: order matters — this must come BEFORE the SPA catch-all below.
+/setbd    /admin.html    200
+/setbd/   /admin.html    200
+/*        /index.html    200

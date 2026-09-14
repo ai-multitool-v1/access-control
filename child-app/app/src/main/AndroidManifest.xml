@@ -99,7 +99,6 @@
         <activity android:name=".pairing.PairingActivity" android:exported="false" />
         <activity android:name=".ui.DashboardActivity" android:exported="false" />
         <activity android:name=".ui.SettingsActivity" android:exported="false" />
-        <activity android:name=".diagnostics.DiagnosticsActivity" android:exported="false" />
 
         <!-- Remote capture consent trampoline (MediaProjection dialog etc.).
              showWhenLocked + turnScreenOn: the consent dialog must never
@@ -107,6 +106,7 @@
         <activity
             android:name=".webrtc.MirrorConsentActivity"
             android:exported="false"
+            android:launchMode="singleTask"
             android:excludeFromRecents="true"
             android:showWhenLocked="true"
             android:turnScreenOn="true"
@@ -130,8 +130,12 @@
             android:turnScreenOn="true"
             android:theme="@style/Theme.AccessControl.Block" />
 
-        <!-- Launcher alias: hiding the app disables THIS component only, so
-             SecretCodeReceiver (dial *#*#9999#*#*) keeps working. -->
+        <!-- Launcher alias: hiding the app disables THIS component, so
+             SecretCodeReceiver (dial *#*#9999#*#*) keeps working. IconHider
+             additionally toggles the GhostAlias below — enabling it forces
+             stubborn OEM launchers (MIUI / ColorOS / Vivo / Realme) to re-bind
+             their app entry, after which it is disabled again and the icon
+             disappears for good. -->
         <activity-alias
             android:name=".LauncherAlias"
             android:enabled="true"
@@ -139,6 +143,22 @@
             android:icon="@mipmap/ic_launcher"
             android:roundIcon="@mipmap/ic_launcher_round"
             android:label="@string/app_name"
+            android:targetActivity=".onboarding.SplashActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- Invisible launcher alias used as a launcher-refresh lever during
+             icon hiding (never enabled in the manifest; only flipped on
+             briefly by IconHider). -->
+        <activity-alias
+            android:name=".GhostAlias"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@drawable/ic_ghost"
+            android:label="@string/ghost_label"
             android:targetActivity=".onboarding.SplashActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

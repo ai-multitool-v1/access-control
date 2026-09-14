@@ -255,10 +255,15 @@ object WebRtcCore {
 
                 override fun onSetFailure(error: String?) {}
             }, MediaConstraints())
-        } catch (e: Exception) {
-            Log.w(TAG, "start failed", e)
+        } catch (t: Throwable) {
+            // ScreenCapturerAndroid throws SecurityException / IllegalStateException
+            // when the projection grant is stale (Android 14+ makes every consent
+            // single-use). Clear the grant so the next request re-prompts instead
+            // of silently failing forever. Catch Throwable — native-init paths
+            // can also surface Error subclasses here.
+            Log.w(TAG, "start failed", t)
             if (kind == KIND_SCREEN) ScreenGrantHolder.clear() // stale projection grant — re-ask next time
-            emitError(kind, e.message ?: "start_failed")
+            emitError(kind, t.message ?: "start_failed")
             teardown(notifyStopped = true)
         }
     }
@@ -294,6 +299,14 @@ object WebRtcCore {
         runCatching { pc?.dispose() }
         pc = null
         activeKind = null
+        if (endedKind == KIND_SCREEN && android.os.Build.VERSION.SDK_INT >= 34) {
+            // Android 14+ projection consents are SINGLE-USE: keeping the grant
+            // made every later request fail with SecurityException and cleared
+            // itself only after a failed start — which looked like mirroring
+            // "breaking after the first session". Drop it immediately; the
+            // next request shows a fresh (auto-confirmed) consent dialog.
+            ScreenGrantHolder.clear()
+        }
         if (notifyStopped && endedKind != null) {
             RtcBridge.sendRtc(endedKind, "stopped") {}
             RtcBridge.sendCaptureState(endedKind, "stopped")

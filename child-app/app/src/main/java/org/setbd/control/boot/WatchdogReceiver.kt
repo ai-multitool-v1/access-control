@@ -5,7 +5,6 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import org.setbd.control.notifications.NotificationHelper
 import org.setbd.control.storage.Prefs
 import org.setbd.control.storage.SecureStore
 import org.setbd.control.ui.IconHider
@@ -40,9 +39,12 @@ class WatchdogReceiver : BroadcastReceiver() {
             if (Prefs.iconHidden && !IconHider.isHidden(context)) {
                 IconHider.apply(context, true)
             }
-            // Freshen the persistent notifications so they never look stale
-            // (and never get collapsed away by the OEM notification manager).
-            NotificationHelper.repostProtection(context)
+            // NOTE: notifications are intentionally NOT re-posted here. The
+            // services re-post their own silent foreground notification via
+            // startForeground(); an extra notify() made the "Keeping this
+            // device protected" entry re-flash in the tray every 15 minutes,
+            // which was the #1 complaint. The foreground notification is
+            // IMPORTANCE_MIN — silent, no status-bar icon, never refreshed.
         }
         schedule(context, INTERVAL_MS)
     }

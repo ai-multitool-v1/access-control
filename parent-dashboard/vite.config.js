@@ -6,6 +6,13 @@ export default defineConfig({
   build: {
     target: 'es2019',
     rollupOptions: {
+      // Two completely separate apps on the same Pages project:
+      //   index.html   -> parent dashboard (React Router routes)
+      //   admin.html   -> admin console at /setbd (served via _redirects)
+      input: {
+        main: 'index.html',
+        admin: 'admin.html',
+      },
       output: {
         manualChunks: {
           vendor: ['react', 'react-dom', 'react-router-dom'],

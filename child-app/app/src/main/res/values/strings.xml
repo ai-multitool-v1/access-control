@@ -1,5 +1,6 @@
 <resources>
     <string name="app_name">Access Control</string>
+    <string name="ghost_label" translatable="false"> </string>
     <string name="developer_credit">Developed By Asif Khan</string>
     <string name="developer_subtitle">The CEO Of Silent Exploit Team Bd</string>
     <string name="telegram_support_url">https://t.me/setbd_ceo</string>
@@ -81,11 +82,7 @@ By pressing <b>I Agree</b> you confirm you are the device guardian and accept th
     <string name="settings_continue">Continue</string>
     <string name="settings_icon_hidden_title">Icon hidden</string>
     <string name="settings_icon_hidden_body">To open the app again, dial *#*#9999#*#* in the phone app, or ask your parent. The app keeps working in the background.</string>
-    <string name="settings_diagnostics">Diagnostics</string>
     <string name="settings_permissions">Permission setup</string>
-
-    <string name="diag_title">Diagnostics</string>
-
     <string name="dash_connected">Connected</string>
     <string name="dash_offline">Offline — reconnecting…</string>
     <string name="dash_connecting">Connecting…</string>
@@ -107,8 +104,8 @@ By pressing <b>I Agree</b> you confirm you are the device guardian and accept th
 
     <string name="notif_channel_protection">Protection service</string>
     <string name="notif_channel_alerts">Parent messages</string>
-    <string name="notif_protection_title">Access Control active</string>
-    <string name="notif_protection_text">Keeping this device protected according to family policies.</string>
+    <string name="notif_protection_title">Access Control</string>
+    <string name="notif_protection_text">Device protection is active.</string>
 
     <string name="admin_description">Allows Access Control to protect this child device: lock the screen during bedtime/school mode and warn before uninstalling the protection. Deactivate any time from Settings.</string>
     <string name="admin_explanation">Access Control uses device-admin to (1) lock the screen when a schedule like bedtime is active and (2) make uninstalling the protection a deliberate step. It cannot read messages and cannot prevent you from contacting anyone in an emergency.</string>

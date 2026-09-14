@@ -16,7 +16,15 @@ import org.setbd.control.onboarding.SplashActivity
 import org.setbd.control.webrtc.MirrorConsentActivity
 
 object NotificationHelper {
-    const val CH_PROTECTION = "protection"
+    // v1.7.0: the old "protection" channel (IMPORTANCE_LOW) made the persistent
+    // "Keeping this device protected" notification VISIBLY sit in the status
+    // bar and re-flash every time a service reposted it — the single most
+    // complained-about annoyance. Channels cannot be re-importanced once
+    // created, so protection services now post on a brand-new channel with
+    // IMPORTANCE_MIN: no status-bar icon, no sound, no heads-up, collapsed to
+    // the silent bottom section. The old channel is deleted outright.
+    const val CH_PROTECTION = "protection_silent_v2"
+    const val CH_PROTECTION_LEGACY = "protection"
     const val CH_ALERTS = "alerts"
     const val ENFORCER_NOTIFICATION_ID = 42
     const val REALTIME_NOTIFICATION_ID = 43
@@ -27,9 +35,21 @@ object NotificationHelper {
     fun createChannels(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.createNotificationChannel(
-            NotificationChannel(CH_PROTECTION, context.getString(R.string.notif_channel_protection), NotificationManager.IMPORTANCE_LOW)
-        )
+        // Remove the old visible "protection" channel from every previously
+        // installed version — its notifications disappear with it.
+        runCatching { nm.deleteNotificationChannel(CH_PROTECTION_LEGACY) }
+        runCatching { nm.deleteNotificationChannel("protection_silent") }
+        val silent = NotificationChannel(
+            CH_PROTECTION,
+            context.getString(R.string.notif_channel_protection),
+            NotificationManager.IMPORTANCE_MIN
+        ).apply {
+            setShowBadge(false)
+            enableVibration(false)
+            enableLights(false)
+            setSound(null, null)
+        }
+        nm.createNotificationChannel(silent)
         nm.createNotificationChannel(
             NotificationChannel(CH_ALERTS, context.getString(R.string.notif_channel_alerts), NotificationManager.IMPORTANCE_HIGH)
         )
@@ -47,35 +67,45 @@ object NotificationHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-    fun protectionNotification(ctx: Context): Notification =
+    /**
+     * The foreground-service notification required by Android for the
+     * realtime + enforcer services. Posted on the IMPORTANCE_MIN channel with
+     * SECRET visibility and MIN priority: the service stays fully protected,
+     * but the notification never shows an icon, never sounds, never flashes,
+     * and hides from the lock screen. As close to "no notification" as
+     * Android physically allows a foreground service to be.
+     */
+    private fun silentServiceNotification(ctx: Context): Notification =
         NotificationCompat.Builder(ctx, CH_PROTECTION)
             .setSmallIcon(R.drawable.ic_logo)
             .setContentTitle(ctx.getString(R.string.notif_protection_title))
             .setContentText(ctx.getString(R.string.notif_protection_text))
             .setOngoing(true)
-            .setContentIntent(contentIntent(ctx))
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setPriority(NotificationCompat.PRIORITY_MIN)
+            .setVisibility(NotificationCompat.VISIBILITY_SECRET)
+            .setShowWhen(false)
+            .setSilent(true)
+            .setBadgeIconType(NotificationCompat.BADGE_ICON_NONE)
             .build()
 
-    fun realtimeNotification(ctx: Context): Notification =
-        NotificationCompat.Builder(ctx, CH_PROTECTION)
-            .setSmallIcon(R.drawable.ic_logo)
-            .setContentTitle(ctx.getString(R.string.notif_protection_title))
-            .setContentText(ctx.getString(R.string.notif_protection_text))
-            .setOngoing(true)
-            .setContentIntent(contentIntent(ctx))
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .build()
+    fun protectionNotification(ctx: Context): Notification = silentServiceNotification(ctx)
 
-    /** Ongoing WebRTC capture indicator (screen sharing / microphone / camera). */
+    fun realtimeNotification(ctx: Context): Notification = silentServiceNotification(ctx)
+
+    /** Ongoing WebRTC capture indicator (screen sharing / microphone / camera).
+     *  Kept minimal the same way — Android additionally shows its own cast/mic
+     *  indicators for the duration of the session. */
     fun captureNotification(ctx: Context, text: String): Notification =
         NotificationCompat.Builder(ctx, CH_PROTECTION)
             .setSmallIcon(R.drawable.ic_logo)
             .setContentTitle(ctx.getString(R.string.capture_active_title))
             .setContentText(text)
             .setOngoing(true)
-            .setContentIntent(contentIntent(ctx))
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setPriority(NotificationCompat.PRIORITY_MIN)
+            .setVisibility(NotificationCompat.VISIBILITY_SECRET)
+            .setShowWhen(false)
+            .setSilent(true)
+            .setBadgeIconType(NotificationCompat.BADGE_ICON_NONE)
             .build()
 
     /**
@@ -111,23 +141,6 @@ object NotificationHelper {
             nm.notify(CAPTURE_REQUEST_NOTIFICATION_ID + kind.hashCode(), n)
         } catch (e: SecurityException) {
             // notifications disabled — child must open the app manually
-        }
-    }
-
-    /**
-     * Refresh the two persistent protection notifications without restarting
-     * the services. Some OEM notification managers silently drop stale
-     * foreground notifications after hours; re-posting them on the SAME ids
-     * keeps the protection visible (called by the 15-min watchdog).
-     */
-    fun repostProtection(ctx: Context) {
-        if (!canPostNotifications(ctx)) return
-        try {
-            val nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            nm.notify(ENFORCER_NOTIFICATION_ID, protectionNotification(ctx))
-            nm.notify(REALTIME_NOTIFICATION_ID, realtimeNotification(ctx))
-        } catch (_: Exception) {
-            // notification manager hiccup — the services keep running regardless
         }
     }
 

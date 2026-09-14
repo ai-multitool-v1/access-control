@@ -43,7 +43,20 @@ class MirrorConsentActivity : AppCompatActivity() {
                     WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
             )
         }
-        val kind = intent.getStringExtra(EXTRA_KIND) ?: "screen"
+        launchFlow(intent)
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        // singleTask launchMode: a parent retry while this trampoline is still
+        // alive arrives here instead of recreating the activity — restart the
+        // consent flow so the retry actually shows the dialog again.
+        launchFlow(intent)
+    }
+
+    private fun launchFlow(intent: Intent?) {
+        val kind = intent?.getStringExtra(EXTRA_KIND) ?: "screen"
         when (kind) {
             WebRtcCore.KIND_SCREEN -> {
                 // Arm the accessibility auto-allow BEFORE the dialog opens so
@@ -63,7 +76,7 @@ class MirrorConsentActivity : AppCompatActivity() {
                 finish()
             }
             WebRtcCore.KIND_CAMERA -> {
-                CaptureService.startCamera(this, intent.getStringExtra(EXTRA_FACING) ?: "front")
+                CaptureService.startCamera(this, intent?.getStringExtra(EXTRA_FACING) ?: "front")
                 finish()
             }
             else -> finish()
