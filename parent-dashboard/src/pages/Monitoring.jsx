@@ -11,6 +11,8 @@ import { useRtcViewer } from '../hooks/useRtcViewer.js';
 import { command, onEvent } from '../services/ws.js';
 import { PageHeader, SpatialCard, StatusDot, EmptyState, ErrorBanner, fmtTime } from '../components/ui.jsx';
 import DataModal from '../components/DataModal.jsx';
+import ProGate from '../components/ProGate.jsx';
+import { usePlan } from '../services/plan.jsx';
 
 const RTC_LABELS = { screen: 'Remote session', ambient: 'One-way audio', camera: 'Remote camera' };
 
@@ -141,7 +143,7 @@ function fmtDuration(sec) {
   return `${Math.floor(s / 60)}m ${s % 60}s`;
 }
 
-export default function Monitoring() {
+function MonitoringInner() {
   const [devices, setDevices] = useState([]);
   const [deviceId, setDeviceId] = useState('');
   const [conn, setConn] = useState('disconnected');
@@ -605,5 +607,18 @@ export default function Monitoring() {
         </div>
       )}
     </div>
+  );
+}
+
+// Free-plan paywall: screen mirror / remote sessions are Pro-only (the Worker
+// and the DeviceHub DO also refuse every mirror command for free accounts).
+export default function Monitoring(props) {
+  const { premium, loading } = usePlan();
+  return (
+    <ProGate premium={premium} loading={loading}
+      title="Screen mirror & remote sessions"
+      description="Live screen, one-way audio, remote camera and remote touch are part of the Pro plan. Upgrade to watch and assist in realtime.">
+      <MonitoringInner {...props} />
+    </ProGate>
   );
 }

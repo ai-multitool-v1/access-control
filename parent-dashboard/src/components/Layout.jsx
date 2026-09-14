@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Send, Info, X, ExternalLink, ShieldCheck, Bell, Menu, MoreHorizontal } from 'lucide-react';
+import { Send, Info, X, ExternalLink, ShieldCheck, Bell, Menu, MoreHorizontal, Crown } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth.jsx';
 import { PREVIEW_MODE } from '../lib/preview.js';
 import { NotificationsProvider, useNotifications } from '../hooks/useNotifications.jsx';
 import { fmtTime } from '../components/ui.jsx';
 import NotifDetailModal from './NotifDetailModal.jsx';
+import AnnouncementHost from './AnnouncementHost.jsx';
+import { usePlan } from '../services/plan.jsx';
 
 const NAV = [
   { to: '/dashboard', label: 'Dashboard', icon: 'M3 12l9-9 9 9M5 10v10h14V10' },
@@ -18,6 +20,7 @@ const NAV = [
   { to: '/notifications', label: 'Notifications', icon: 'M18 8a6 6 0 10-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10.3 21a2 2 0 003.4 0' },
   { to: '/browsing', label: 'Browsing', icon: 'M3 12a9 9 0 1018 0 9 9 0 00-18 0zM3 12h18M12 3a15 15 0 010 18 15 15 0 010-18z' },
   { to: '/telegram', label: 'Telegram', icon: 'M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z' },
+  { to: '/pricing', label: 'Premium', icon: 'M3 17l6-6 4 4 8-8M14 7h7v7' },
   { to: '/profile', label: 'Profile', icon: 'M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 11a4 4 0 100-8 4 4 0 000 8z' },
   { to: '/settings', label: 'Settings', icon: 'M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a7.8 7.8 0 000-6l2-1.2-2-3.4-2 1.2a8 8 0 00-5.4-3L12 .5 8 .6l-.6 2.1a8 8 0 00-5.4 3L0 4.5-2 7.9 0 9a7.8 7.8 0 000 6l-2 1.2 2 3.4 2-1.2a8 8 0 005.4 3L8 23.5l4-.1.6-2.1a8 8 0 005.4-3l2 1.2 2-3.4L19.4 15z' },
 ];
@@ -246,6 +249,7 @@ function LayoutInner() {
             <Send className="h-4 w-4" /> Feedback
           </a>
           <div className="mt-3 truncate font-mono text-[10px] text-slate-600">{user?.email}</div>
+          <PlanChip />
           <button
             onClick={doSignOut}
             className="btn-ghost mt-2 w-full py-2 text-[11px]"
@@ -259,6 +263,7 @@ function LayoutInner() {
       <div className="fixed inset-x-0 top-0 z-20 flex items-center justify-between border-b-2 border-space-600 bg-space-800/95 px-4 py-3 lg:hidden">
         <div className="font-mono text-xs font-black uppercase tracking-widest text-white">Access Control</div>
         <div className="flex items-center gap-2">
+          <PlanChip compact />
           <BellButton />
           <button onClick={() => setAboutOpen(true)} className="border-2 border-space-600 p-1.5 text-neon">
             <Info className="h-4 w-4" />
@@ -294,6 +299,7 @@ function LayoutInner() {
       {/* Content — keyed fade transition on every tab open/close */}
       <main className="min-w-0 flex-1 overflow-x-hidden px-4 pb-28 pt-20 lg:ml-60 lg:px-8 lg:pb-10 lg:pt-8">
         <div key={location.pathname} className="animate-fade-in">
+          <AnnouncementHost />
           {PREVIEW_MODE && (
             <div className="animate-fade-up mb-4 border-2 border-amber-400/50 bg-amber-400/10 px-4 py-2.5 font-mono text-xs font-bold text-amber-300 shadow-brutal">
               LOCAL PREVIEW — mock data, no live connection. Start with VITE_PREVIEW_MODE=1 npm run dev.
@@ -308,6 +314,21 @@ function LayoutInner() {
       {aboutOpen && <AboutModal onClose={() => setAboutOpen(false)} />}
       {detail && <NotifDetailModal item={detail} onClose={closeDetail} />}
     </div>
+  );
+}
+
+// Plan badge — sidebar (full) + mobile top bar (compact). Links to /pricing.
+function PlanChip({ compact = false }) {
+  const { premium, tier, loading } = usePlan();
+  if (loading) return null;
+  const label = premium ? `PRO${tier && tier !== 'lifetime' ? ` · ${tier}` : ' · lifetime'}` : 'FREE';
+  return (
+    <NavLink to="/pricing"
+      className={`inline-flex items-center gap-1 border-2 px-2 py-0.5 font-mono text-[9px] font-black uppercase tracking-wider ${
+        premium ? 'border-emerald-400 text-emerald-300 bg-emerald-400/10' : 'border-slate-600 text-slate-400 bg-slate-700/20 hover:text-white'}`}>
+      {!premium && <Crown className="h-3 w-3" />}
+      {compact ? (premium ? 'PRO' : 'FREE') : label}
+    </NavLink>
   );
 }
 

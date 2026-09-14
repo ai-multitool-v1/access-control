@@ -36,6 +36,9 @@ import { json, HttpError, readJson, str } from '../lib/respond.js';
 import { clientIp, rateLimit } from '../lib/ratelimit.js';
 import { totpVerify } from '../lib/totp.js';
 import { sbRest, sbInsert, sbUpdate } from '../lib/supabase.js';
+import { PLANS, invalidateSubscriptionCache } from '../lib/subscription.js';
+import { sendTelegramTo } from '../notify/telegram.js';
+import { publicStorageUrl } from './payments.js';
 
 const TOKEN_TTL_MS = 8 * 60 * 60 * 1000; // 8 hours
 const MFA_TTL_MS = 5 * 60 * 1000; // one-time step-2 ticket: short expiry
@@ -397,7 +400,243 @@ export async function handleAdminUnban(request, env) {
   return json({ ok: true, unbanned: userId });
 }
 
-// ---------- security / database ----------
+// ---------- broadcast (announcements: banner / popup / notification) ----------
+
+const ANNOUNCEMENT_TYPES = new Set(['banner', 'popup', 'notification']);
+const MAX_BANNER_IMAGE_BYTES = 5 * 1024 * 1024;
+
+export async function handleAdminAnnouncements(request, env) {
+  const method = request.method;
+  if (method === 'GET') {
+    const rows = await sbRest(env, 'announcements?select=id,type,title,body,image_url,link_url,active,created_by,expires_at,created_at&order=created_at.desc&limit=100');
+    return json({ ok: true, announcements: rows });
+  }
+  if (method !== 'POST') throw new HttpError(405, 'method', 'Use GET or POST');
+
+  const ctype = request.headers.get('Content-Type') || '';
+  let type, title, body, linkUrl, expiresAt, imageUrl = null;
+  let imageBytes = null, imageType = null;
+
+  if (ctype.includes('multipart/form-data')) {
+    const form = await request.formData();
+    type = str(form.get('type'), 20);
+    title = str(form.get('title'), 120);
+    body = str(form.get('body'), 1000);
+    linkUrl = str(form.get('linkUrl'), 500);
+    expiresAt = str(form.get('expiresAt'), 40);
+    const file = form.get('image');
+    if (file && typeof file !== 'string') {
+      if (!['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'].includes(file.type)) {
+        throw new HttpError(400, 'bad_request', 'Image must be PNG/JPG/WebP/GIF');
+      }
+      if (file.size > MAX_BANNER_IMAGE_BYTES) throw new HttpError(413, 'too_large', 'Image too large — max 5 MB');
+      imageBytes = new Uint8Array(await file.arrayBuffer());
+      imageType = file.type;
+    }
+    const urlField = str(form.get('imageUrl'), 500);
+    if (urlField) imageUrl = urlField;
+  } else {
+    const b = await readJson(request);
+    type = str(b.type, 20);
+    title = str(b.title, 120);
+    body = str(b.body, 1000);
+    linkUrl = str(b.linkUrl, 500);
+    expiresAt = str(b.expiresAt, 40);
+    imageUrl = str(b.imageUrl, 500) || null;
+  }
+
+  if (!ANNOUNCEMENT_TYPES.has(type)) {
+    throw new HttpError(400, 'bad_request', 'type must be banner, popup or notification');
+  }
+  if (!title && !body && !imageUrl) {
+    throw new HttpError(400, 'bad_request', 'Provide at least a title, a body or an image');
+  }
+
+  // Uploaded image → public banners bucket; URL becomes immutable public CDN link.
+  if (imageBytes) {
+    const ext = imageType === 'image/png' ? 'png'
+      : imageType === 'image/webp' ? 'webp'
+      : imageType === 'image/gif' ? 'gif' : 'jpg';
+    const path = `${Date.now()}-${crypto.randomUUID().slice(0, 8)}.${ext}`;
+    const res = await fetch(`${env.SUPABASE_URL}/storage/v1/object/banners/${path}`, {
+      method: 'POST',
+      headers: {
+        apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+        'Content-Type': imageType,
+        'x-upsert': 'true',
+      },
+      body: imageBytes,
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      throw new HttpError(502, 'storage_failed', `Image upload failed (${res.status}) ${detail.slice(0, 100)}`);
+    }
+    imageUrl = publicStorageUrl(env, 'banners', path);
+  }
+
+  const row = await sbInsert(env, 'announcements', {
+    type,
+    title: title || null,
+    body: body || null,
+    image_url: imageUrl,
+    link_url: linkUrl || null,
+    active: true,
+    created_by: 'admin',
+    expires_at: expiresAt ? new Date(expiresAt).toISOString() : null,
+  });
+  return json({ ok: true, announcement: row[0] || null });
+}
+
+export async function handleAdminAnnouncementToggle(request, env) {
+  const body = await readJson(request);
+  const id = str(body.id, 64);
+  const active = Boolean(body.active);
+  if (!id || !/^[0-9a-fA-F-]{36}$/.test(id)) throw new HttpError(400, 'bad_request', 'id (uuid) required');
+  await sbUpdate(env, 'announcements', `id=eq.${id}`, { active });
+  return json({ ok: true, id, active });
+}
+
+export async function handleAdminAnnouncementDelete(request, env) {
+  const body = await readJson(request);
+  const id = str(body.id, 64);
+  if (!id || !/^[0-9a-fA-F-]{36}$/.test(id)) throw new HttpError(400, 'bad_request', 'id (uuid) required');
+  await sbRest(env, `announcements?id=eq.${id}`, { method: 'DELETE' });
+  return json({ ok: true, deleted: id });
+}
+
+// ---------- payments (manual review) ----------
+
+export async function handleAdminPayments(env) {
+  const rows = await sbRest(env,
+    'payment_requests?select=id,parent_id,email,plan,amount_bdt,method,sender_number,transaction_id,screenshot_path,status,review_note,created_at,reviewed_at&order=created_at.desc&limit=200'
+  ).catch(() => []);
+  return json({ ok: true, payments: rows, plans: PLANS });
+}
+
+/** Streams a payment screenshot from the private bucket (admin-token protected). */
+export async function handleAdminPaymentImage(request, env) {
+  const url = new URL(request.url);
+  const path = url.searchParams.get('path') || '';
+  // strict path shape: <uuid>/<timestamp>-<id>.<ext> — no traversal, ever
+  if (!/^[0-9a-fA-F-]{36}\/[0-9]+-[0-9a-f-]{8}\.(png|jpg)$/.test(path)) {
+    throw new HttpError(400, 'bad_request', 'Invalid screenshot path');
+  }
+  const res = await fetch(`${env.SUPABASE_URL}/storage/v1/object/payments/${path}`, {
+    headers: {
+      apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+      Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+    },
+  });
+  if (!res.ok) throw new HttpError(404, 'not_found', 'Screenshot not found');
+  return new Response(res.body, {
+    headers: {
+      'Content-Type': res.headers.get('Content-Type') || 'application/octet-stream',
+      'Cache-Control': 'private, no-store',
+    },
+  });
+}
+
+export async function handleAdminPaymentDecision(request, env) {
+  const body = await readJson(request);
+  const requestId = str(body.requestId, 64);
+  const decision = str(body.decision, 10); // approve | reject
+  const note = str(body.note, 300) || null;
+  if (!/^[0-9a-fA-F-]{36}$/.test(requestId || '')) throw new HttpError(400, 'bad_request', 'requestId (uuid) required');
+  if (!['approve', 'reject'].includes(decision)) throw new HttpError(400, 'bad_request', 'decision must be approve or reject');
+
+  const rows = await sbRest(env, `payment_requests?id=eq.${requestId}&select=id,parent_id,email,plan,amount_bdt,method,status`);
+  const pr = rows[0];
+  if (!pr) throw new HttpError(404, 'not_found', 'Payment request not found');
+  if (pr.status !== 'pending') throw new HttpError(409, 'already_reviewed', `This request is already ${pr.status}`);
+
+  await sbUpdate(env, 'payment_requests', `id=eq.${requestId}`, {
+    status: decision === 'approve' ? 'approved' : 'rejected',
+    review_note: note,
+    reviewed_at: new Date().toISOString(),
+  });
+
+  let granted = null;
+  if (decision === 'approve') {
+    const planDef = PLANS[pr.plan];
+    if (!planDef) throw new HttpError(500, 'bad_plan', 'Unknown plan on the request');
+    const periodEnd = planDef.days ? new Date(Date.now() + planDef.days * 86_400_000).toISOString() : null;
+    const existing = await sbRest(env, `subscriptions?parent_id=eq.${pr.parent_id}&select=parent_id`).catch(() => []);
+    if (existing.length > 0) {
+      await sbUpdate(env, 'subscriptions', `parent_id=eq.${pr.parent_id}`, {
+        plan: 'premium', tier: pr.plan, status: 'active',
+        current_period_end: periodEnd, source: 'payment_request',
+      });
+    } else {
+      await sbInsert(env, 'subscriptions', {
+        parent_id: pr.parent_id, plan: 'premium', tier: pr.plan, status: 'active',
+        current_period_end: periodEnd, source: 'payment_request',
+      }, false);
+    }
+    invalidateSubscriptionCache(pr.parent_id);
+    granted = { plan: pr.plan, until: periodEnd };
+  }
+
+  // Best-effort Telegram heads-up to the parent (if they configured a bot).
+  const msg = decision === 'approve'
+    ? `✅ <b>Payment approved</b>\n\nPlan: <b>${pr.plan}</b>${granted?.until ? `\nActive until: ${new Date(granted.until).toDateString()}` : '\nAccess: lifetime'}\nAmount: ${pr.amount_bdt} BDT (${pr.method})\n\nEnjoy all Pro features!`
+    : `❌ <b>Payment not approved</b>\n\nPlan: ${pr.plan} · ${pr.amount_bdt} BDT (${pr.method})\n${note ? `Reason: ${note}\n` : ''}\nContact support if you think this is a mistake.`;
+  sendTelegramTo(env, pr.parent_id, msg).catch(() => {});
+
+  return json({ ok: true, requestId, decision, granted });
+}
+
+// ---------- devices (all connected children + hardware) ----------
+
+const HW_KEYS = ['model', 'brand', 'manufacturer', 'device', 'board', 'androidVersion', 'sdkInt',
+  'buildNumber', 'kernelVersion', 'processor', 'cpuAbi', 'cores', 'ramTotal', 'ramAvailable',
+  'storageTotal', 'storageFree', 'batteryHealth', 'batteryCapacity', 'display', 'resolution',
+  'screenDensity', 'securityPatch'];
+
+export async function handleAdminDevices(request, env) {
+  const url = new URL(request.url);
+  const detailId = url.searchParams.get('id');
+
+  if (detailId) {
+    if (!/^[0-9a-fA-F-]{36}$/.test(detailId)) throw new HttpError(400, 'bad_request', 'id must be a uuid');
+    const dev = await sbRest(env, `devices?id=eq.${detailId}&select=*,profiles(email,display_name)`).catch(() => []);
+    if (!dev[0]) throw new HttpError(404, 'not_found', 'Device not found');
+    return json({ ok: true, device: { ...dev[0], hardware: dev[0].hardware || null } });
+  }
+
+  const [devices, profiles] = await Promise.all([
+    sbRest(env, 'devices?select=id,parent_id,name,model,brand,android_version,app_version,status,battery_level,charging,network_state,last_seen_at,hardware,created_at&order=created_at.desc&limit=500'),
+    sbRest(env, 'profiles?select=id,email,display_name').catch(() => []),
+  ]);
+  const pmap = new Map(profiles.map((p) => [p.id, p]));
+  const rows = devices.map((d) => {
+    const hw = d.hardware && typeof d.hardware === 'object' ? d.hardware : null;
+    const summary = {};
+    if (hw) for (const k of HW_KEYS) if (hw[k] !== undefined && hw[k] !== null && hw[k] !== '') summary[k] = hw[k];
+    const p = pmap.get(d.parent_id);
+    return {
+      id: d.id,
+      name: d.name,
+      model: d.model,
+      brand: d.brand,
+      androidVersion: d.android_version,
+      appVersion: d.app_version,
+      status: d.status,
+      battery: d.battery_level,
+      charging: d.charging,
+      network: d.network_state,
+      lastSeenAt: d.last_seen_at,
+      createdAt: d.created_at,
+      parentId: d.parent_id,
+      parentEmail: p?.email || null,
+      parentName: p?.display_name || null,
+      hardwareSummary: summary,
+      hasHardware: Boolean(hw),
+    };
+  });
+  return json({ ok: true, count: rows.length, devices: rows });
+}
+
 
 export async function handleAdminSecurity(env) {
   // Live RLS + policy snapshot from the database itself (see migration 0006).

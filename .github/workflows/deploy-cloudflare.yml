@@ -14,6 +14,7 @@
 #
 # OPTIONAL SECRETS (Worker):
 #   TELEGRAM_BOT_TOKEN            Default bot token fallback
+#   OWNER_TELEGRAM_CHAT_ID        Your chat id — receives payment requests for manual review
 #   FCM_SERVICE_ACCOUNT_JSON      Firebase service-account JSON for FCM HTTP v1
 #   ADMIN_PASSWORD                Password for the admin console at /setbd
 #   ADMIN_EMAIL                   Admin login e-mail (extra verification layer)
@@ -63,7 +64,7 @@ jobs:
           echo "Add repository secrets (Settings → Secrets and variables → Actions):"
           echo "  CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, SUPABASE_URL,"
           echo "  SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY"
-          echo "(optional: TELEGRAM_BOT_TOKEN, FCM_SERVICE_ACCOUNT_JSON, ADMIN_PASSWORD, ADMIN_EMAIL, ADMIN_TOTP_SECRET)"
+          echo "(optional: TELEGRAM_BOT_TOKEN, OWNER_TELEGRAM_CHAT_ID, FCM_SERVICE_ACCOUNT_JSON, ADMIN_PASSWORD, ADMIN_EMAIL, ADMIN_TOTP_SECRET)"
 
       - uses: actions/checkout@v4
         if: env.HAS_CREDS == 'true'
@@ -105,6 +106,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          OWNER_TELEGRAM_CHAT_ID: ${{ secrets.OWNER_TELEGRAM_CHAT_ID }}
           FCM_SERVICE_ACCOUNT_JSON: ${{ secrets.FCM_SERVICE_ACCOUNT_JSON }}
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
           ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
@@ -122,6 +124,7 @@ jobs:
           }
           put_secret SUPABASE_SERVICE_ROLE_KEY "$SUPABASE_SERVICE_ROLE_KEY"
           put_secret TELEGRAM_BOT_TOKEN "$TELEGRAM_BOT_TOKEN"
+          put_secret OWNER_TELEGRAM_CHAT_ID "$OWNER_TELEGRAM_CHAT_ID"
           put_secret FCM_SERVICE_ACCOUNT_JSON "$FCM_SERVICE_ACCOUNT_JSON"
           put_secret ADMIN_PASSWORD "$ADMIN_PASSWORD"
           put_secret ADMIN_EMAIL "$ADMIN_EMAIL"

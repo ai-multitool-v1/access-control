@@ -5,6 +5,8 @@ import 'leaflet/dist/leaflet.css';
 import { api } from '../services/api.js';
 import { command } from '../services/ws.js';
 import { PageHeader, SpatialCard, EmptyState, ErrorBanner, Toggle, fmtTime, EmptyIcon } from '../components/ui.jsx';
+import ProGate from '../components/ProGate.jsx';
+import { usePlan } from '../services/plan.jsx';
 
 // Google Maps directions deep-link — works on desktop (web) and opens the
 // native app on phones, so the parent can trace/navigate to the place.
@@ -73,7 +75,7 @@ function TraceMap({ points, height = 420 }) {
   return <div ref={el} style={{ height }} className="z-0 w-full border-0 bg-space-900" />;
 }
 
-export default function Location() {
+function LocationInner() {
   const [devices, setDevices] = useState([]);
   const [deviceId, setDeviceId] = useState('');
   const [locs, setLocs] = useState(null);
@@ -221,5 +223,18 @@ export default function Location() {
         </div>
       )}
     </div>
+  );
+}
+
+// Free-plan paywall: live location is Pro-only (the /locations REST endpoint
+// also answers 402 for free accounts — this only shapes the UI).
+export default function Location(props) {
+  const { premium, loading } = usePlan();
+  return (
+    <ProGate premium={premium} loading={loading}
+      title="Live location"
+      description="Realtime location tracking, trace-on-map and directions are part of the Pro plan. Upgrade to always know where the child device is.">
+      <LocationInner {...props} />
+    </ProGate>
   );
 }

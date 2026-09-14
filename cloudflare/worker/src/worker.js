@@ -5,6 +5,7 @@ import { DeviceHub } from '../../durable-object/websocket/device-hub.js';
 import { PairingHub } from '../../durable-object/pairing/pairing-hub.js';
 import { json, err, corsHeaders } from './lib/respond.js';
 import { validateParentToken, validateDeviceToken, bearerToken, sha256hex, checkBanned } from './auth/auth.js';
+import { getSubscription } from './lib/subscription.js';
 import { handleApi } from './routes/router.js';
 
 // Durable Object classes must be exported from the main module.
@@ -101,6 +102,11 @@ async function handleWs(request, env) {
     const rows = await owned.json().catch(() => []);
     if (!rows || rows.length === 0) return err(403, 'forbidden', 'You do not have access to this device');
     var parentUid = user.id;
+    // Premium flag rides with the socket — the DO blocks Pro-only commands
+    // (screen mirror, file manager, media previews, remote sessions) for free
+    // parents at the protocol level.
+    const sub = await getSubscription(env, user.id).catch(() => ({ premium: false }));
+    var planFlag = sub.premium ? 'premium' : 'free';
   } else if (role === 'child') {
     const dev = await validateDeviceToken(token, env);
     if (!dev || dev.id !== deviceId) {
@@ -115,8 +121,9 @@ async function handleWs(request, env) {
   // Route to the per-device hub.
   const id = env.DEVICE_HUB.idFromName(deviceId);
   const stub = env.DEVICE_HUB.get(id);
+  const planQ = role === 'parent' ? `&plan=${encodeURIComponent(planFlag)}` : '';
   return stub.fetch(
-    `https://device-hub.local/connect?role=${role}&device=${encodeURIComponent(deviceId)}&parent=${encodeURIComponent(parentUid)}`,
+    `https://device-hub.local/connect?role=${role}&device=${encodeURIComponent(deviceId)}&parent=${encodeURIComponent(parentUid)}${planQ}`,
     request
   );
 }

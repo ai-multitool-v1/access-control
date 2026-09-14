@@ -2,7 +2,7 @@
 // Strongly-consistent DO storage gives us: single-use codes, expiry,
 // and per-IP rate limiting (brute-force protection).
 
-import { sbInsert, sbUpdate } from '../../worker/src/lib/supabase.js';
+import { sbInsert, sbUpdate, sbRest } from '../../worker/src/lib/supabase.js';
 
 const CODE_TTL_MS = 10 * 60 * 1000;      // 10 minutes
 const CLAIM_LIMIT_PER_HOUR = 30;          // per IP
@@ -68,6 +68,25 @@ export class PairingHub {
 
     const info = deviceInfo || {};
     try {
+      // Free-plan device cap: FREE = 1 bound child, PRO = effectively unlimited.
+      // Checked HERE (inside the DO, before the insert) so the limit cannot be
+      // raced by claiming a valid code twice in parallel.
+      let maxDevices = 100;
+      try {
+        const sub = await sbRest(this.env, `subscriptions?parent_id=eq.${entry.parentId}&select=plan,status,current_period_end`);
+        const s = sub[0] || null;
+        const premium = s && s.plan === 'premium' && s.status === 'active'
+          && (!s.current_period_end || Date.parse(s.current_period_end) > now);
+        if (!premium) maxDevices = 1;
+      } catch { /* subscription lookup failed — stay permissive rather than lock out paid users */ }
+      const bound = await sbRest(this.env, `devices?parent_id=eq.${entry.parentId}&select=id&status=neq.revoked`);
+      if (bound.length >= maxDevices) {
+        return jErr(402, 'device_limit_reached',
+          maxDevices === 1
+            ? 'Free plan binds only ONE child device. Upgrade to Pro on the dashboard to add more.'
+            : 'Device limit reached for this plan.');
+      }
+
       const devices = await sbInsert(this.env, 'devices', {
         parent_id: entry.parentId,
         name: info.name || 'Child device',

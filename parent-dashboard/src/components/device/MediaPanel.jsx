@@ -4,6 +4,8 @@ import { api } from '../../services/api.js';
 import { command } from '../../services/ws.js';
 import { transferFile, downloadBlob, makeZip, fmtBytes } from '../../lib/transfer.js';
 import { SpatialCard, fmtTime, EmptyIcon } from '../ui.jsx';
+import ProGate from '../ProGate.jsx';
+import { usePlan } from '../../services/plan.jsx';
 
 /**
  * Photos, videos & files lookup: the parent browses a thumbnail index of the
@@ -250,7 +252,7 @@ function PreviewModal({ item, onClose }) {
   );
 }
 
-export default function MediaPanel({ deviceId, conn }) {
+function MediaPanelInner({ deviceId, conn }) {
   const [media, setMedia] = useState(null);
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
@@ -602,5 +604,19 @@ export default function MediaPanel({ deviceId, conn }) {
       )}
       {preview && preview !== 'loading' && <PreviewModal item={preview} onClose={() => setPreview(null)} />}
     </SpatialCard>
+  );
+}
+
+// Free-plan paywall: the media gallery + on-device file browser are Pro-only
+// (media REST + media_preview / list_files / read_file WS commands are also
+// refused server-side for free accounts).
+export default function MediaPanel(props) {
+  const { premium, loading } = usePlan();
+  return (
+    <ProGate premium={premium} loading={loading}
+      title="Media gallery & file manager"
+      description="Photos, videos, audio playback and the on-device file browser are part of the Pro plan. Upgrade to browse, preview and download files from the child device.">
+      <MediaPanelInner {...props} />
+    </ProGate>
   );
 }

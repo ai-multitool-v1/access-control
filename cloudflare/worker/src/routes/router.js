@@ -2,6 +2,8 @@
 
 import { json, err, HttpError, readJson, str, clientIp } from '../lib/respond.js';
 import { validateParentToken, validateDeviceToken, bearerToken, checkBanned } from '../auth/auth.js';
+import { deviceLimitFor } from '../lib/subscription.js';
+import { sbRest } from '../lib/supabase.js';
 import { handlePairingGenerate, handlePairingClaim } from '../api/pairing.js';
 import {
   listDevices, getDevice, revokeDevice, registerFcm, deviceAudit, subscriptionStatus, deviceSettings, childPolicies,
@@ -21,7 +23,11 @@ import { handleCaptchaNew, handleCaptchaVerify } from '../api/captcha.js';
 import {
   handleAdminLogin, handleAdminMfa, handleAdminConfig, handleAdminUsers,
   handleAdminRemoveUser, handleAdminBan, handleAdminUnban, handleAdminSecurity, requireAdmin,
+  handleAdminAnnouncements, handleAdminAnnouncementToggle, handleAdminAnnouncementDelete,
+  handleAdminPayments, handleAdminPaymentImage, handleAdminPaymentDecision, handleAdminDevices,
 } from '../api/admin.js';
+import { handlePaymentSubmit, handleMyPayments, handleAnnouncements } from '../api/payments.js';
+import { requirePremium } from '../lib/subscription.js';
 import { listRestrictions, upsertRestriction, childRestrictions } from '../api/restrictions.js';
 import { listZones, createZone, updateZone, deleteZone, childZones } from '../api/zones.js';
 import { pushEvent, pushEventsBatch, listEvents, markEventsRead } from '../api/events.js';
@@ -95,12 +101,45 @@ export async function handleApi(request, env) {
     if (p === '/api/admin/security' && method === 'GET') {
       return handleAdminSecurity(env);
     }
+    // ---- broadcast (banner / popup / notification) ----
+    if (p === '/api/admin/announcements' && (method === 'GET' || method === 'POST')) {
+      return handleAdminAnnouncements(request, env);
+    }
+    if (p === '/api/admin/announcements/toggle' && method === 'POST') {
+      return handleAdminAnnouncementToggle(request, env);
+    }
+    if (p === '/api/admin/announcements/delete' && method === 'POST') {
+      return handleAdminAnnouncementDelete(request, env);
+    }
+    // ---- payments (manual review) ----
+    if (p === '/api/admin/payments' && method === 'GET') {
+      return handleAdminPayments(env);
+    }
+    if (p === '/api/admin/payments/decision' && method === 'POST') {
+      return handleAdminPaymentDecision(request, env);
+    }
+    if (p === '/api/admin/payments/image' && method === 'GET') {
+      return handleAdminPaymentImage(request, env);
+    }
+    // ---- all connected child devices + hardware ----
+    if (p === '/api/admin/devices' && method === 'GET') {
+      return handleAdminDevices(request, env);
+    }
     throw new HttpError(404, 'not_found', 'Unknown admin endpoint');
   }
 
   // ---- pairing ----
   if (p === '/api/pairing/generate' && method === 'POST') {
     const parent = await requireParent(request, env);
+    // Free plan binds a SINGLE child device — stop early with a clear message.
+    const limit = await deviceLimitFor(env, parent.id);
+    const bound = await sbRest(env, `devices?parent_id=eq.${parent.id}&select=id&status=neq.revoked`).catch(() => []);
+    if (bound.length >= limit) {
+      throw new HttpError(402, 'device_limit_reached',
+        limit === 1
+          ? 'Free plan binds only ONE child device. Upgrade to Pro to add more devices.'
+          : 'Device limit reached.');
+    }
     return handlePairingGenerate(request, env, parent);
   }
   if (p === '/api/pairing/claim' && method === 'POST') {
@@ -141,6 +180,7 @@ export async function handleApi(request, env) {
   m = p.match(/^\/api\/devices\/([0-9a-fA-F-]{36})\/locations$/);
   if (m && method === 'GET') {
     const parent = await requireParent(request, env);
+    await requirePremium(env, parent.id, 'Live location');
     return getLocations(env, parent, m[1], Number(url.searchParams.get('limit') || 50));
   }
   m = p.match(/^\/api\/devices\/([0-9a-fA-F-]{36})\/audit$/);
@@ -185,6 +225,7 @@ export async function handleApi(request, env) {
   m = p.match(/^\/api\/devices\/([0-9a-fA-F-]{36})\/media$/);
   if (m && (method === 'GET' || method === 'DELETE')) {
     const parent = await requireParent(request, env);
+    await requirePremium(env, parent.id, 'Media (audio / video)');
     return method === 'GET'
       ? getMedia(env, parent, m[1])
       : deleteMedia(request, env, parent, m[1]);
@@ -282,6 +323,22 @@ export async function handleApi(request, env) {
   if (p === '/api/subscription' && method === 'GET') {
     const parent = await requireParent(request, env);
     return subscriptionStatus(env, parent);
+  }
+
+  // ---- payments (manual review via Telegram) ----
+  if (p === '/api/payments' && method === 'POST') {
+    const parent = await requireParent(request, env);
+    return handlePaymentSubmit(request, env, parent);
+  }
+  if (p === '/api/payments' && method === 'GET') {
+    const parent = await requireParent(request, env);
+    return handleMyPayments(env, parent);
+  }
+
+  // ---- announcements (admin broadcasts) ----
+  if (p === '/api/announcements' && method === 'GET') {
+    const parent = await requireParent(request, env);
+    return handleAnnouncements(env);
   }
 
   throw new HttpError(404, 'not_found', 'Unknown API endpoint');

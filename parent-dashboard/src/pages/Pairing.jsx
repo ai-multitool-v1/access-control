@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { Crown, Lock } from 'lucide-react';
 import { api } from '../services/api.js';
+import { usePlan } from '../services/plan.jsx';
 import { PageHeader, SpatialCard, ErrorBanner } from '../components/ui.jsx';
 
 export default function Pairing() {
+  const { premium, boundDevices, loading: planLoading } = usePlan();
   const [code, setCode] = useState(null);
   const [expiresAt, setExpiresAt] = useState(null);
   const [remaining, setRemaining] = useState(0);
@@ -38,6 +42,26 @@ export default function Pairing() {
     <div>
       <PageHeader title="Pairing" subtitle="Connect the child app with a one-time code" />
       <ErrorBanner message={error} onRetry={generate} />
+
+      {/* Free plan: exactly one device — show the upgrade path up front */}
+      {!planLoading && !premium && boundDevices >= 1 && (
+        <div className="spatial-card mb-5 flex flex-wrap items-center gap-4 p-5">
+          <div className="flex h-11 w-11 flex-none items-center justify-center rounded-full border-2 border-amber-400/60 bg-amber-400/10">
+            <Lock className="h-5 w-5 text-amber-300" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="flex items-center gap-2 text-sm font-bold text-white">
+              Device limit reached <Crown className="h-3.5 w-3.5 text-amber-300" />
+            </h3>
+            <p className="mt-0.5 text-xs text-slate-400">
+              Free plan binds <b>one</b> child device ({boundDevices} connected). Upgrade to Pro to add more devices.
+            </p>
+          </div>
+          <Link to="/pricing" className="btn-primary inline-flex items-center gap-2 text-xs">
+            <Crown className="h-4 w-4" /> Upgrade
+          </Link>
+        </div>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <SpatialCard className="animate-fade-up p-6">

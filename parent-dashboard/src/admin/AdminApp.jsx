@@ -12,8 +12,10 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   ShieldCheck, Users, Database, RefreshCw, Ban as BanIcon, Trash2,
   Undo2, LogOut, Search, AlertTriangle, Lock, Server, KeyRound, Globe,
+  Megaphone, CreditCard, Smartphone,
 } from 'lucide-react';
 import { API_BASE } from '../lib/config.js';
+import { BroadcastTab, PaymentsTab, DevicesTab } from './AdminExtras.jsx';
 
 // ---------- api ----------
 
@@ -546,6 +548,24 @@ export default function AdminApp() {
             >
               <Database className="h-4 w-4" /> Database & Security
             </button>
+            <button
+              onClick={() => setTab('broadcast')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider ${tab === 'broadcast' ? 'border-2 border-neon bg-neon/10 text-neon' : 'border-2 border-transparent text-slate-400 hover:text-white'}`}
+            >
+              <Megaphone className="h-4 w-4" /> Broadcast
+            </button>
+            <button
+              onClick={() => setTab('payments')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider ${tab === 'payments' ? 'border-2 border-neon bg-neon/10 text-neon' : 'border-2 border-transparent text-slate-400 hover:text-white'}`}
+            >
+              <CreditCard className="h-4 w-4" /> Payments
+            </button>
+            <button
+              onClick={() => setTab('devices')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider ${tab === 'devices' ? 'border-2 border-neon bg-neon/10 text-neon' : 'border-2 border-transparent text-slate-400 hover:text-white'}`}
+            >
+              <Smartphone className="h-4 w-4" /> Devices
+            </button>
           </nav>
           <button
             onClick={() => { setToken(''); }}
@@ -565,6 +585,9 @@ export default function AdminApp() {
         )}
         {tab === 'users' && <UsersTab token={token} onSessionExpired={() => setToken('')} />}
         {tab === 'security' && <SecurityTab token={token} />}
+        {tab === 'broadcast' && <BroadcastTab token={token} onSessionExpired={() => setToken('')} />}
+        {tab === 'payments' && <PaymentsTab token={token} onSessionExpired={() => setToken('')} />}
+        {tab === 'devices' && <DevicesTab token={token} onSessionExpired={() => setToken('')} />}
       </main>
 
       <footer className="border-t-2 border-space-600 py-4 text-center font-mono text-[10px] uppercase tracking-widest text-slate-600">

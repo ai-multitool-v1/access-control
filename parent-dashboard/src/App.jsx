@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 import { useAuth } from './hooks/useAuth.jsx';
+import { PlanProvider } from './services/plan.jsx';
 import { assertConfig } from './lib/config.js';
 import Login from './pages/Login.jsx';
 import Dashboard from './pages/Dashboard.jsx';
@@ -17,6 +18,7 @@ import Browsing from './pages/Browsing.jsx';
 import Settings from './pages/Settings.jsx';
 import Profile from './pages/Profile.jsx';
 import Telegram from './pages/Telegram.jsx';
+import Pricing from './pages/Pricing.jsx';
 import NotFound from './pages/NotFound.jsx';
 
 export default function App() {
@@ -52,25 +54,28 @@ export default function App() {
   }
 
   return (
-    <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/devices" element={<Devices />} />
-        <Route path="/devices/:id" element={<DeviceDetail />} />
-        <Route path="/pairing" element={<Pairing />} />
-        <Route path="/monitoring" element={<Monitoring />} />
-        <Route path="/usage" element={<Usage />} />
-        <Route path="/location" element={<Location />} />
-        <Route path="/policies" element={<Policies />} />
-        <Route path="/notifications" element={<Notifications />} />
-        <Route path="/browsing" element={<Browsing />} />
-        <Route path="/settings" element={<Settings />} />
-        <Route path="/profile" element={<Profile />} />
-        <Route path="/telegram" element={<Telegram />} />
-      </Route>
-      <Route path="/" element={<Navigate to="/dashboard" replace />} />
-      <Route path="*" element={<NotFound />} />
-    </Routes>
+    <PlanProvider>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/devices" element={<Devices />} />
+          <Route path="/devices/:id" element={<DeviceDetail />} />
+          <Route path="/pairing" element={<Pairing />} />
+          <Route path="/monitoring" element={<Monitoring />} />
+          <Route path="/usage" element={<Usage />} />
+          <Route path="/location" element={<Location />} />
+          <Route path="/policies" element={<Policies />} />
+          <Route path="/notifications" element={<Notifications />} />
+          <Route path="/browsing" element={<Browsing />} />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="/profile" element={<Profile />} />
+          <Route path="/telegram" element={<Telegram />} />
+          <Route path="/pricing" element={<Pricing />} />
+        </Route>
+        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    </PlanProvider>
   );
 }

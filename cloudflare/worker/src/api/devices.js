@@ -4,6 +4,7 @@ import { json, err, HttpError, readJson, str } from '../lib/respond.js';
 import { sbRest, sbSingle, sbInsert, sbUpdate } from '../lib/supabase.js';
 import { notifyDeviceEvent } from '../notify/events.js';
 import { pushServerEvent } from '../lib/devicehub.js';
+import { getSubscription, FREE_DEVICE_LIMIT, PRO_DEVICE_LIMIT } from '../lib/subscription.js';
 import { listPolicies } from './policies.js';
 
 const DEVICE_COLS = 'id,parent_id,name,model,brand,android_version,app_version,status,battery_level,charging,network_state,last_seen_at,created_at';
@@ -139,9 +140,32 @@ export async function deviceAudit(env, parent, deviceId) {
 }
 
 export async function subscriptionStatus(env, parent) {
-  const row = await sbSingle(env, `subscriptions?parent_id=eq.${parent.id}&select=plan,status,current_period_end`);
+  const sub = await getSubscription(env, parent.id);
+  // How many devices are bound right now (for the pairing limit display).
+  let boundDevices = 0;
+  let deviceLimit = PRO_DEVICE_LIMIT;
+  try {
+    const rows = await sbRest(env, `devices?parent_id=eq.${parent.id}&select=id&status=neq.revoked`);
+    boundDevices = rows.length;
+    if (!sub.premium) deviceLimit = FREE_DEVICE_LIMIT;
+  } catch { /* best-effort */ }
   return json({
     ok: true,
-    subscription: row || { plan: 'free', status: 'active', current_period_end: null },
+    subscription: {
+      plan: sub.plan,
+      status: sub.premium ? 'active' : 'free',
+      tier: sub.tier,
+      current_period_end: sub.expiresAt,
+    },
+    premium: sub.premium,
+    deviceLimit,
+    boundDevices,
+    features: {
+      screenMirror: sub.premium,
+      fileManager: sub.premium,
+      mediaGallery: sub.premium,
+      liveLocation: sub.premium,
+      multipleDevices: sub.premium,
+    },
   });
 }

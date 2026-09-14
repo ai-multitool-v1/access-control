@@ -4,6 +4,7 @@
 // timeouts, connection state persistence and offline wake-ups.
 
 import { ALLOWED_ACTIONS, CHILD_EVENTS, SERVER_CHILD_EVENTS, RTC_KINDS, RTC_ACTIONS_PARENT_TO_CHILD, RTC_ACTIONS_CHILD_TO_PARENT, LONG_COMMANDS } from '../../worker/src/protocol.js';
+import { PRO_ONLY_ACTIONS } from '../../worker/src/lib/subscription.js';
 import { notifyDeviceEvent, pushWake } from '../../worker/src/notify/events.js';
 
 const COMMAND_TIMEOUT_MS = 15_000;
@@ -27,6 +28,7 @@ export class DeviceHub {
     this.state = state;
     this.env = env;
     this.parents = new Map(); // socketId -> WebSocket
+    this.parentMeta = new Map(); // socketId -> { plan: 'free' | 'premium' }
     this.child = null;        // { socket, socketId, lastSeen }
     this.pending = new Map(); // requestId -> { parentWs, timer }
     this.chunks = new Map();  // requestId -> { n, got, parts: Map<i, string> }
@@ -107,6 +109,7 @@ export class DeviceHub {
       notifyDeviceEvent(this.env, this.parentIdHint, this.deviceIdHint, 'connect').catch(() => {});
     } else {
       this.parents.set(socketId, server);
+      this.parentMeta.set(socketId, { plan: url.searchParams.get('plan') === 'premium' ? 'premium' : 'free' });
       server.send(JSON.stringify({ type: 'event', event: 'hello', payload: { childConnected: Boolean(this.child) } }));
     }
 
@@ -132,7 +135,7 @@ export class DeviceHub {
     }
 
     if (role === 'parent' && msg.type === 'command') {
-      this.onParentCommand(this.parents.get(socketId), msg);
+      this.onParentCommand(socketId, this.parents.get(socketId), msg);
       return;
     }
 
@@ -186,6 +189,9 @@ export class DeviceHub {
       if (role === 'parent') {
         if (!RTC_ACTIONS_PARENT_TO_CHILD.has(action)) return;
         if (!this.child) return;
+        // WebRTC sessions are Pro-only (screen / ambient / camera) — 'stop'
+        // stays free so any lingering session can always be closed.
+        if (action !== 'stop' && this.parentMeta.get(socketId)?.plan !== 'premium') return;
         this.sendToChild({ type: 'rtc', payload: this.sanitizeRtc(p, kind, action) });
       } else {
         if (!RTC_ACTIONS_CHILD_TO_PARENT.has(action)) return;
@@ -265,7 +271,7 @@ export class DeviceHub {
     return clean;
   }
 
-  onParentCommand(parentWs, msg) {
+  onParentCommand(socketId, parentWs, msg) {
     const requestId = typeof msg.requestId === 'string' ? msg.requestId.slice(0, 64) : null;
     if (!requestId) {
       this.send(parentWs, { type: 'error', code: 'bad_request', message: 'requestId required' });
@@ -276,6 +282,16 @@ export class DeviceHub {
       this.send(parentWs, {
         type: 'response', requestId, success: false,
         error: { code: 'not_allowed', message: `Action "${action}" is not allowed` },
+      });
+      return;
+    }
+    // Free-plan paywall — enforced at the protocol level, before the command
+    // ever reaches the child. stop_* actions always stay allowed so a session
+    // can be closed even after a downgrade.
+    if (PRO_ONLY_ACTIONS.has(action) && this.parentMeta.get(socketId)?.plan !== 'premium') {
+      this.send(parentWs, {
+        type: 'response', requestId, success: false,
+        error: { code: 'upgrade_required', message: `"${action}" is a Pro feature — upgrade on the Premium page to unlock it.` },
       });
       return;
     }
@@ -323,6 +339,7 @@ export class DeviceHub {
       notifyDeviceEvent(this.env, this.parentIdHint, this.deviceIdHint, 'disconnect').catch(() => {});
     } else if (role === 'parent') {
       this.parents.delete(socketId);
+      this.parentMeta.delete(socketId);
     }
   }
 
