@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabaseClient.js';
 import { PREVIEW_MODE } from '../lib/preview.js';
 import { api } from '../services/api.js';
 import { onAnyEvent, unwatchAll, watchDevices } from '../services/notifBus.js';
+import { hapticAlert, playNotifyTone, showBrowserNotification } from '../lib/feedback.js';
 
 /**
  * Global parent notification system:
@@ -111,13 +112,23 @@ export function NotificationsProvider({ children }) {
         title: p.appLabel || p.title || LABELS[msg.event] || 'Device event',
         body: p.notifTitle || p.text || p.message || '',
         at: msg.at,
-        severity: msg.event === 'sos' || msg.event === 'zone_exit' || msg.event === 'nsfw_detected' ? 'critical' : msg.event === 'app_blocked' ? 'warning' : 'info',
+        severity: msg.event === 'sos' || msg.event === 'zone_exit' || msg.event === 'nsfw_detected' || msg.event === 'app_crash' ? 'critical' : msg.event === 'app_blocked' ? 'warning' : 'info',
         // full parsed payload for the detail modal
         payload: p,
         packageName: p.packageName || p.appPackage || null,
       };
       setItems((list) => [item, ...list].slice(0, MAX_ITEMS));
       pushToast(item);
+      // Parent alert pipeline (all parent-controlled, see Settings → Feedback):
+      //   1. notification tone (critical events get a rising alarm)
+      //   2. strong haptic pattern on critical events
+      //   3. OS-level browser notification while the dashboard is open
+      //      (Web Push covers the dashboard-closed case)
+      try {
+        playNotifyTone(item.severity);
+        if (item.severity === 'critical') hapticAlert();
+        showBrowserNotification(item);
+      } catch { /* feedback must never break the feed */ }
     });
     return () => {
       active = false;
@@ -172,4 +183,5 @@ export const LABELS = {
   capture_state: 'Remote access state change',
   child_connected: 'Child device came online',
   child_disconnected: 'Child device went offline',
+  app_crash: 'Child app crashed',
 };

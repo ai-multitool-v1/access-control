@@ -28,6 +28,21 @@ class SyncWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, 
         val deviceId = SecureStore.deviceId ?: return Result.success()
         val token = SecureStore.deviceToken ?: return Result.success()
 
+        // 0. KEEP-ALIVE: the periodic worker is the most persistent component
+        //    the app owns (WorkManager survives process death and OEM kills).
+        //    Whenever it wakes, it also revives any dead foreground service so
+        //    the realtime link comes back even if the app was swiped away.
+        try {
+            if (!org.setbd.control.websocket.RealtimeService.running ||
+                !org.setbd.control.controls.PolicyEnforcerService.running
+            ) {
+                org.setbd.control.util.ServiceLauncher.startAll(applicationContext)
+            }
+            org.setbd.control.boot.WatchdogReceiver.schedule(applicationContext)
+        } catch (e: Exception) {
+            // FGS start restrictions on some OEMs — the next cycle retries
+        }
+
         // 1. Usage summaries (needs Usage Access)
         if (PermissionManager.usageAccessGranted(applicationContext)) {
             try {

@@ -174,7 +174,9 @@ class BlockAccessibilityService : AccessibilityService() {
     }
 
     companion object {
-        private const val BLOCK_THROTTLE_MS = 1500L
+        // Tight enough that reopening a restricted app is blocked in under a
+        // second (PolicyEnforcerService's 3 s loop is the backstop).
+        private const val BLOCK_THROTTLE_MS = 900L
         private const val PROJECTION_THROTTLE_MS = 1200L
         private const val MAX_SCAN_NODES = 300
         private const val SYSTEM_UI_PKG = "com.android.systemui"

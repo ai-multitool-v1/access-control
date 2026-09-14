@@ -23,6 +23,7 @@ const TYPE_LABELS = {
   app_uninstalled: 'App uninstalled',
   info: 'Info',
   notification: 'Notification captured',
+  app_crash: 'App crash report',
 };
 
 function EventDetailModal({ event, deviceId, onMarked, onClose }) {

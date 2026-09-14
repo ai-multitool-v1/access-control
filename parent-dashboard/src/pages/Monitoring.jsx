@@ -453,7 +453,7 @@ function MonitoringInner() {
                 {rtc.status === 'live' && <span className="chip chip-ok animate-blink">LIVE</span>}
               </div>
 
-              {showVideo ? (
+              {showVideo && !modalOpen ? (
                 <video
                   ref={rtc.videoRef}
                   autoPlay
@@ -465,10 +465,12 @@ function MonitoringInner() {
                 <div className="grid aspect-video w-full place-items-center border-2 border-space-600 bg-black/60 font-mono text-xs uppercase tracking-widest text-slate-600">
                   {rtc.status === 'requested'
                     ? 'Waiting for the child device to accept…'
-                    : 'No active video session — use the remote access buttons.'}
+                    : modalOpen
+                      ? 'Live session open in the remote window'
+                      : 'No active video session — use the remote access buttons.'}
                 </div>
               )}
-              <audio ref={rtc.audioRef} autoPlay className={rtc.kind === 'ambient' ? '' : 'hidden'} />
+              {!modalOpen && <audio ref={rtc.audioRef} autoPlay className={rtc.kind === 'ambient' ? '' : 'hidden'} />}
               {rtc.status === 'connecting' && (
                 <p className="mt-2 animate-pulse font-mono text-[10px] uppercase tracking-widest text-neon-dim">Negotiating WebRTC connection…</p>
               )}

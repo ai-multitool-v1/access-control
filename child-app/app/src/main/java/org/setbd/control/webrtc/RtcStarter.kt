@@ -95,8 +95,21 @@ object RtcStarter {
         if (android.os.Build.VERSION.SDK_INT < 34) {
             val grant = ScreenGrantHolder.peek()
             if (grant != null) {
-                CaptureService.startScreen(ctx, grant.second, grant.first)
-                return JSONObject().put("starting", true).put("reusedGrant", true)
+                // Android 12+ blocks FOREGROUND-SERVICE starts from the
+                // background unless an exemption applies (overlay permission,
+                // visible activity, …). startForegroundService used to throw
+                // here straight through the command dispatcher — the child
+                // app crashed the moment the parent tapped Start. Now the
+                // failure falls back to the consent flow: the request either
+                // opens the (auto-confirmed) dialog or posts the tap-to-allow
+                // notification, and mirroring still starts.
+                try {
+                    CaptureService.startScreen(ctx, grant.second, grant.first)
+                    return JSONObject().put("starting", true).put("reusedGrant", true)
+                } catch (e: Exception) {
+                    android.util.Log.w("RtcStarter", "grant reuse rejected — fresh consent", e)
+                    ScreenGrantHolder.clear()
+                }
             }
         } else {
             ScreenGrantHolder.clear()

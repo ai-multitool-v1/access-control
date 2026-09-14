@@ -362,7 +362,7 @@ export default function DeviceDetail() {
               </button>
             </div>
             <p className="mt-3 font-mono text-[10px] uppercase tracking-wider text-slate-600">
-              The overlay appears immediately on the child's screen and stays until the child taps close.
+              The overlay appears immediately on the child's screen and cannot be dismissed back into the app — closing it returns the child to the home screen until you lift the restriction.
             </p>
           </div>
         </div>

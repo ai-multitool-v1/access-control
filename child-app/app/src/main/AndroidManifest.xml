@@ -170,10 +170,12 @@
         <service
             android:name=".websocket.RealtimeService"
             android:exported="false"
+            android:stopWithTask="false"
             android:foregroundServiceType="dataSync" />
         <service
             android:name=".controls.PolicyEnforcerService"
             android:exported="false"
+            android:stopWithTask="false"
             android:foregroundServiceType="dataSync" />
 
         <service

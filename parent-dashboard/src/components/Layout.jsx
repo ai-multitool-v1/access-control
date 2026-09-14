@@ -215,10 +215,21 @@ function LayoutInner() {
   const [aboutOpen, setAboutOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const pageRef = useRef(null);
+  const navRef = useRef(null);
+  const activeRef = useRef(null);
 
   // GSAP route transition — runs on every tab open/close (location change).
   useEffect(() => {
     return pageIn(pageRef.current);
+  }, [location.pathname]);
+
+  // Short screens: the 13-item sidebar scrolls — keep the ACTIVE tab visible
+  // (the Notifications tab used to sit below the fold and look unreachable).
+  useEffect(() => {
+    const el = activeRef.current;
+    if (el && typeof el.scrollIntoView === 'function') {
+      el.scrollIntoView({ block: 'nearest' });
+    }
   }, [location.pathname]);
 
   const doSignOut = async () => {
@@ -239,13 +250,14 @@ function LayoutInner() {
             <div className="font-mono text-[9px] uppercase tracking-[0.25em] text-neon-dim">Parent Console</div>
           </div>
         </div>
-        <nav className="flex-1 space-y-0.5 overflow-y-auto px-3">
+        <nav ref={navRef} className="ac-scrollbar flex-1 space-y-0.5 overflow-y-auto px-3 py-1">
           {NAV.map((n) => (
             <NavLink
               key={n.to}
               to={n.to}
+              ref={(el) => { if (el && location.pathname.startsWith(n.to)) activeRef.current = el; }}
               className={({ isActive }) =>
-                `flex items-center gap-3 border-2 px-3 py-2 font-mono text-xs font-bold uppercase tracking-wider transition ${
+                `flex items-center gap-3 border-2 px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-wider transition ${
                   isActive
                     ? 'border-neon bg-neon/10 text-neon shadow-brutal-neon'
                     : 'border-transparent text-slate-400 hover:border-space-600 hover:bg-space-700 hover:text-slate-200'
@@ -257,24 +269,25 @@ function LayoutInner() {
             </NavLink>
           ))}
         </nav>
-        <div className="border-t-2 border-space-600 p-4">
+        <div className="border-t-2 border-space-600 px-3 py-3">
           <div className="mb-2 flex items-center justify-between">
-            <button onClick={() => setAboutOpen(true)} className="btn-ghost flex-1 py-2 text-[11px]">
+            <button onClick={() => setAboutOpen(true)} className="btn-ghost flex-1 py-1.5 text-[11px]">
               <Info className="h-4 w-4" /> About
             </button>
             <div className="ml-2"><BellButton /></div>
           </div>
-          <a href="https://t.me/setbd_ceo" target="_blank" rel="noreferrer" className="btn-ghost w-full py-2 text-[11px]">
-            <Send className="h-4 w-4" /> Feedback
-          </a>
-          <div className="mt-3 truncate font-mono text-[10px] text-slate-600">{user?.email}</div>
-          <PlanChip />
-          <button
-            onClick={doSignOut}
-            className="btn-ghost mt-2 w-full py-2 text-[11px]"
-          >
-            Sign out
-          </button>
+          <div className="flex items-center gap-2">
+            <a href="https://t.me/setbd_ceo" target="_blank" rel="noreferrer" className="btn-ghost flex-1 py-1.5 text-[11px]">
+              <Send className="h-4 w-4" /> Feedback
+            </a>
+            <button onClick={doSignOut} className="btn-ghost py-1.5 text-[11px]" title="Sign out">
+              <LogOut className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="mt-2 flex items-center justify-between gap-2">
+            <span className="truncate font-mono text-[10px] text-slate-600">{user?.email}</span>
+            <PlanChip compact />
+          </div>
         </div>
       </aside>
 

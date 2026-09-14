@@ -91,6 +91,24 @@ body {
   background: #00c9a0;
 }
 
+/* Sidebar nav scrollbar — brighter thumb so scrolling is OBVIOUS on short
+   screens (the Notifications tab used to look like it fell off the page). */
+.ac-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #2dd4a8 transparent;
+  overscroll-behavior: contain;
+}
+.ac-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+.ac-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(0, 201, 160, 0.45);
+  border-radius: 3px;
+}
+.ac-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 201, 160, 0.75);
+}
+
 body {
   @apply bg-space-900 text-slate-200 font-sans antialiased;
   background-image:

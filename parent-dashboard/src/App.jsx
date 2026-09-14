@@ -1,9 +1,11 @@
+import { useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 import { useAuth } from './hooks/useAuth.jsx';
 import { PlanProvider } from './services/plan.jsx';
 import { assertConfig } from './lib/config.js';
+import { haptic, primeAudio } from './lib/feedback.js';
 import Login from './pages/Login.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Devices from './pages/Devices.jsx';
@@ -24,6 +26,25 @@ import NotFound from './pages/NotFound.jsx';
 export default function App() {
   const { loading } = useAuth();
   const missing = assertConfig();
+
+  // Haptic feedback on EVERY dashboard interaction (parent setting, toggleable
+  // in Settings → Feedback & alerts). A single document-level listener covers
+  // every button / link / toggle without touching each component.
+  useEffect(() => {
+    const onDown = (e) => {
+      const t = e.target?.closest?.('button, a, [role="button"], input, select, textarea, label');
+      if (t) haptic(12);
+    };
+    document.addEventListener('pointerdown', onDown, { capture: true });
+    // Prime the WebAudio context inside the first user gesture — without this
+    // mobile browsers block the notification tone.
+    const prime = () => { primeAudio(); document.removeEventListener('pointerdown', prime, true); };
+    document.addEventListener('pointerdown', prime, { capture: true });
+    return () => {
+      document.removeEventListener('pointerdown', onDown, true);
+      document.removeEventListener('pointerdown', prime, true);
+    };
+  }, []);
 
   if (loading) {
     return (

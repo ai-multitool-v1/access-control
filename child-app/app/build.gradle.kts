@@ -28,8 +28,8 @@ android {
         applicationId = "org.setbd.control"
         minSdk = 24
         targetSdk = 34
-        versionCode = 12
-        versionName = "1.10.0"
+        versionCode = 13
+        versionName = "1.11.0"
         buildConfigField("String", "API_BASE", "\"$apiBase\"")
         buildConfigField("String", "WS_BASE", "\"$wsBase\"")
     }

@@ -1,5 +1,6 @@
 package org.setbd.control.controls
 
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.os.Bundle
@@ -16,13 +17,31 @@ import org.setbd.control.monitoring.UsageStatsProvider
  * Full-screen overlay shown when a policy blocks the current app. When the
  * parent attached a custom picture to the restriction, it is displayed above
  * the message (base64 JPEG/PNG, decoded defensively).
+ *
+ * HARD BLOCK (v1.11): the only exit is the HOME screen. Tapping OK (or
+ * pressing Back / swiping the overlay away) NEVER returns the child into the
+ * blocked app — the previous "finish()" put the restricted app right back in
+ * the foreground, so the child could keep using it with the restriction
+ * active. Now the button sends the child to the launcher and the enforcer
+ * re-blocks instantly if the app is opened again. Only the parent can lift a
+ * restriction, from the dashboard.
  */
 class BlockActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_block)
+        visible = true
+        applyIntentExtras()
 
+        findViewById<Button>(R.id.btnClose).setOnClickListener {
+            // Leave the blocked app for GOOD: go to the launcher, not back
+            // into the app behind this screen.
+            exitToHome()
+        }
+    }
+
+    private fun applyIntentExtras() {
         val pkg = intent.getStringExtra("package") ?: ""
         val reason = intent.getStringExtra("reason").orEmpty()
 
@@ -60,21 +79,59 @@ class BlockActivity : AppCompatActivity() {
             img.visibility = View.VISIBLE
             findViewById<TextView>(R.id.blockTitle).visibility = View.GONE
         }
-
-        findViewById<Button>(R.id.btnClose).setOnClickListener {
-            finish()
-        }
     }
 
-    private fun decodeDataImage(dataUri: String): Bitmap? {
-        if (!dataUri.startsWith("data:image/")) return null
-        val comma = dataUri.indexOf(',')
-        if (comma <= 0 || comma >= dataUri.length - 1) return null
-        return try {
-            val raw = Base64.decode(dataUri.substring(comma + 1), Base64.DEFAULT)
-            BitmapFactory.decodeByteArray(raw, 0, raw.size)
-        } catch (e: Exception) {
-            null
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        // Reordered to front for a different blocked app — refresh the texts.
+        setIntent(intent)
+        applyIntentExtras()
+    }
+
+    override fun onBackPressed() {
+        // Same hard rule for the Back gesture/button — never drop the child
+        // back into the restricted app.
+        exitToHome()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        visible = true
+    }
+
+    override fun onPause() {
+        visible = false
+        super.onPause()
+        // Tell the enforcer the block screen is gone so a still-foreground
+        // blocked app is re-blocked on the next loop tick (no 12 s wait for
+        // the natural state change).
+        PolicyEnforcerService.notifyBlockDismissed()
+    }
+
+    override fun onDestroy() {
+        if (visible) visible = false
+        super.onDestroy()
+    }
+
+    /** Send the child to the launcher — the blocked app stays in the background. */
+    private fun exitToHome() {
+        try {
+            val home = Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_HOME)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+            }
+            startActivity(home)
+        } catch (_: Exception) {
+            // No launcher resolved — finish() is the only remaining option.
         }
+        PolicyEnforcerService.notifyBlockDismissed()
+        finish()
+    }
+
+    companion object {
+        /** True while the block screen is on screen (read by PolicyEnforcerService). */
+        @Volatile
+        var visible: Boolean = false
+            private set
     }
 }

@@ -56,11 +56,15 @@ export const SEVERITY_STYLE = {
 export function PageHeader({ title, subtitle, actions }) {
   return (
     <div className="animate-fade-up mb-6 flex flex-wrap items-end justify-between gap-4">
-      <div>
-        <h1 className="font-mono text-2xl font-black uppercase tracking-widest text-white lg:text-3xl">{title}</h1>
-        {subtitle && <p className="mt-1 font-mono text-xs uppercase tracking-wider text-slate-500">{subtitle}</p>}
+      <div className="min-w-0">
+        <h1 className="break-words font-mono text-2xl font-black uppercase tracking-widest text-white lg:text-3xl">{title}</h1>
+        {subtitle && <p className="mt-1 break-words font-mono text-xs uppercase tracking-wider text-slate-500">{subtitle}</p>}
       </div>
-      {actions && <div className="flex gap-2">{actions}</div>}
+      {actions && (
+        // Wrap on phones so action buttons (Revoke / Allow uninstall / …)
+        // stack under the title instead of being pushed off-screen or squeezed.
+        <div className="flex w-full flex-wrap gap-2 sm:w-auto">{actions}</div>
+      )}
     </div>
   );
 }
