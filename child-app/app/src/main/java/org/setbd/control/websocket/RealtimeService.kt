@@ -164,17 +164,21 @@ class RealtimeService : Service(), WsClient.Listener {
                 val payload = obj.optJSONObject("payload") ?: JSONObject()
                 WebRtcCore.handleSignal(this@RealtimeService, payload)
             }
-            "pong" -> { /* heartbeat ack */ }
+            "pong" -> ws?.onPong() // feed the pong-freshness watchdog in WsClient
         }
     }
 
     override fun onWsClosed(willRetry: Boolean) {
         RealtimeState.setConnected(false)
         UiNotifier.notifyState(this, false)
-        if (willRetry) {
-            handler.postDelayed({ ensureConnected() }, backoffMs)
-            backoffMs = (backoffMs * 2).coerceAtMost(60_000L)
-        }
+        // v1.9.1: ALWAYS schedule a reconnect — even for closes the client
+        // classifies as non-retryable (clean 1000s from server deploys/DO
+        // evictions previously bricked the link until the next reboot). The
+        // revoked/unpair path is still safe: it clears SecureStore and stops
+        // this service, so ensureConnected() becomes a no-op and the pending
+        // callback dies with onDestroy()'s handler cleanup.
+        handler.postDelayed({ ensureConnected() }, backoffMs)
+        backoffMs = (backoffMs * 2).coerceAtMost(60_000L)
     }
 
     override fun onWsRevoked() {

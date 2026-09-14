@@ -10,6 +10,11 @@ import { notifyDeviceEvent, pushWake } from '../../worker/src/notify/events.js';
 const COMMAND_TIMEOUT_MS = 15_000;
 const LONG_COMMAND_TIMEOUT_MS = 55_000;
 const STATUS_WRITE_THROTTLE_MS = 60_000;
+// A child that hasn't pinged in >95 s (3+ missed 30 s heartbeats) is a
+// half-open zombie: the DO still holds the socket but nothing flows. Report
+// offline instantly (with an FCM wake-up) instead of letting every command
+// burn its 15 s timeout into the void.
+const CHILD_STALE_MS = 95_000;
 // Chunked-response assembly cap (base64 previews). ~8 MB is far above any
 // legitimate preview while keeping DO memory bounded.
 const CHUNK_TOTAL_CAP = 8 * 1024 * 1024;
@@ -301,6 +306,18 @@ export class DeviceHub {
       this.send(parentWs, {
         type: 'response', requestId, success: false,
         error: { code: 'child_offline', message: 'Child device is offline. A wake-up push was sent — try again in a moment.' },
+      });
+      return;
+    }
+    if (Date.now() - this.child.lastSeen > CHILD_STALE_MS) {
+      // Zombie socket: connected on paper, dead in reality. Drop it and
+      // answer offline + wake-up immediately.
+      try { this.child.socket.close(4008, 'stale'); } catch { /* already dead */ }
+      this.onClose(this.child.socketId, 'child');
+      pushWake(this.env, this.deviceIdHint).catch(() => {});
+      this.send(parentWs, {
+        type: 'response', requestId, success: false,
+        error: { code: 'child_offline', message: 'Child connection was stale — a wake-up push was sent. Try again in a moment.' },
       });
       return;
     }

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Fully transparent status-bar icon: used by the shared silent foreground
+     service notification so the persistent FGS row renders with no icon and
+     no text — invisible to the child while the services stay fully protected
+     (Android requires SOME notification for a foreground service; this is the
+     closest to "no notification" it physically allows). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@android:color/transparent" />
+    <size
+        android:width="24dp"
+        android:height="24dp" />
+</shape>

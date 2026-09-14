@@ -162,7 +162,7 @@ function LocationInner() {
               Data only appears after the child grants location permission and monitoring is enabled.
             </p>
             {latest && (
-              <div className="animate-fade-up mt-4 rounded-xl bg-white/5 p-3 text-sm">
+              <div className="animate-fade-up mt-4 border-2 border-space-600 bg-space-700/60 p-3 text-sm">
                 <div className="text-xs uppercase tracking-wide text-slate-500">Last fix</div>
                 <div className="mt-1 font-semibold text-white">{latest.latitude.toFixed(5)}, {latest.longitude.toFixed(5)}</div>
                 <div className="text-xs text-slate-500">{fmtTime(latest.recorded_at)}{latest.accuracy ? ` · ±${Math.round(latest.accuracy)}m` : ''}</div>
@@ -189,7 +189,7 @@ function LocationInner() {
           </SpatialCard>
 
           <SpatialCard className="p-5 lg:col-span-3">
-            <h3 className="mb-3 text-lg font-semibold text-white">History & trace</h3>
+            <h3 className="mb-3 font-mono text-[11px] font-black uppercase tracking-[0.2em] text-neon-dim">History & trace</h3>
             {!locs || locs.length === 0 ? (
               <p className="py-4 text-center text-sm text-slate-500">No history yet.</p>
             ) : (
@@ -197,7 +197,7 @@ function LocationInner() {
                 {locs.map((l, i) => (
                   <li
                     key={i}
-                    className="animate-fade-up flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white/5 px-3 py-2 transition hover:bg-white/10"
+                    className="animate-fade-up flex flex-wrap items-center justify-between gap-2 border-2 border-space-600 bg-space-700/50 px-3 py-2 transition hover:border-neon"
                     style={{ animationDelay: `${Math.min(i * 25, 400)}ms` }}
                   >
                     <span className="flex items-center gap-2 font-mono text-xs text-slate-300">

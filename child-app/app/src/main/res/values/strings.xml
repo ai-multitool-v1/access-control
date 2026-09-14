@@ -104,8 +104,6 @@ By pressing <b>I Agree</b> you confirm you are the device guardian and accept th
 
     <string name="notif_channel_protection">Protection service</string>
     <string name="notif_channel_alerts">Parent messages</string>
-    <string name="notif_protection_title">Access Control</string>
-    <string name="notif_protection_text">Device protection is active.</string>
 
     <string name="admin_description">Allows Access Control to protect this child device: lock the screen during bedtime/school mode and warn before uninstalling the protection. Deactivate any time from Settings.</string>
     <string name="admin_explanation">Access Control uses device-admin to (1) lock the screen when a schedule like bedtime is active and (2) make uninstalling the protection a deliberate step. It cannot read messages and cannot prevent you from contacting anyone in an emergency.</string>

@@ -46,7 +46,7 @@ export default function Telegram() {
     <div>
       <PageHeader title="Telegram" subtitle="Parent notifications via your own bot" />
       <ErrorBanner message={error} />
-      {msg && <p className="animate-fade-up mb-4 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">{msg}</p>}
+      {msg && <p className="animate-fade-up mb-4 border-2 border-neon/40 bg-neon/5 px-4 py-3 font-mono text-xs font-bold uppercase tracking-wider text-neon shadow-brutal">{msg}</p>}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <SpatialCard className="p-6">
@@ -79,7 +79,7 @@ export default function Telegram() {
         </SpatialCard>
 
         <SpatialCard className="p-6 text-sm text-slate-400">
-          <h3 className="mb-3 text-lg font-semibold text-white">How it's used</h3>
+          <h3 className="mb-3 font-mono text-[11px] font-black uppercase tracking-[0.2em] text-neon-dim">How it's used</h3>
           <ul className="list-disc space-y-2 pl-4">
             <li>Device connect / disconnect alerts</li>
             <li>Policy change confirmations</li>

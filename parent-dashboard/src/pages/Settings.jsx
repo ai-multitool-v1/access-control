@@ -56,8 +56,8 @@ function PushCard() {
 
   return (
     <SpatialCard className="p-6">
-      <h3 className="mb-3 flex items-center gap-2 text-lg font-semibold text-white">
-        <Smartphone className="h-5 w-5 text-neon" /> Phone notifications <span className="ml-auto">{stateChip}</span>
+      <h3 className="mb-3 flex items-center gap-2 font-mono text-[11px] font-black uppercase tracking-[0.2em] text-neon-dim">
+        <Smartphone className="h-4 w-4 text-neon" /> Phone notifications <span className="ml-auto">{stateChip}</span>
       </h3>
       <p className="mb-4 text-sm text-slate-400">
         Get an OS notification on this phone/browser the moment a child device connects, goes offline,
@@ -101,14 +101,14 @@ export default function Settings() {
       <PageHeader title="Settings" subtitle="Account" />
       <div className="grid gap-6 lg:grid-cols-2">
         <SpatialCard className="p-6">
-          <h3 className="mb-3 text-lg font-semibold text-white">Profile</h3>
+          <h3 className="mb-3 font-mono text-[11px] font-black uppercase tracking-[0.2em] text-neon-dim">Profile</h3>
           <div className="space-y-2 text-sm">
-            <div className="flex justify-between rounded-xl bg-white/5 px-4 py-3">
-              <span className="text-slate-400">Email</span>
+            <div className="flex justify-between border-2 border-space-600 bg-space-700/60 px-4 py-3">
+              <span className="font-mono text-[10px] uppercase tracking-wider text-slate-500">Email</span>
               <span className="font-medium text-slate-200">{user?.email || '…'}</span>
             </div>
-            <div className="flex justify-between rounded-xl bg-white/5 px-4 py-3">
-              <span className="text-slate-400">User ID</span>
+            <div className="flex justify-between border-2 border-space-600 bg-space-700/60 px-4 py-3">
+              <span className="font-mono text-[10px] uppercase tracking-wider text-slate-500">User ID</span>
               <span className="max-w-[220px] truncate font-mono text-xs text-slate-400">{user?.id || '…'}</span>
             </div>
           </div>
@@ -117,7 +117,7 @@ export default function Settings() {
         <PushCard />
 
         <SpatialCard className="p-6 lg:col-span-2">
-          <h3 className="mb-3 text-lg font-semibold text-white">Session</h3>
+          <h3 className="mb-3 font-mono text-[11px] font-black uppercase tracking-[0.2em] text-neon-dim">Session</h3>
           <p className="mb-4 text-sm text-slate-400">
             Sign out of this dashboard. Paired devices and policies keep running in the background.
           </p>

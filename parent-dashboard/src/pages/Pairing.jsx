@@ -65,7 +65,7 @@ export default function Pairing() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <SpatialCard className="animate-fade-up p-6">
-          <h3 className="text-lg font-semibold text-white">Generate pairing code</h3>
+          <h3 className="font-mono text-[11px] font-black uppercase tracking-[0.2em] text-neon-dim">Generate pairing code</h3>
           <p className="mt-1 text-sm text-slate-400">
             Codes expire in 10 minutes and work exactly once. Never share them outside your family.
           </p>
@@ -74,10 +74,10 @@ export default function Pairing() {
           </button>
 
           {code && (
-            <div className="mt-6 rounded-2xl border border-accent/40 bg-accent/10 p-6 text-center shadow-glow">
-              <div className="text-xs uppercase tracking-widest text-slate-400">One-time code</div>
-              <div className="my-2 text-4xl font-bold tracking-[0.25em] text-white">{code}</div>
-              <div className={remaining > 60 ? 'text-sm text-accent-green' : 'text-sm text-accent-amber'}>
+            <div className="mt-6 border-2 border-neon bg-neon/10 p-6 text-center shadow-brutal-neon">
+              <div className="font-mono text-[10px] font-bold uppercase tracking-[0.25em] text-neon-dim">One-time code</div>
+              <div className="my-2 font-mono text-4xl font-black tracking-[0.25em] text-white">{code}</div>
+              <div className={remaining > 60 ? 'font-mono text-sm font-bold text-accent-green' : 'font-mono text-sm font-bold text-accent-amber'}>
                 Expires in {mm}:{ss}
               </div>
             </div>
@@ -85,7 +85,7 @@ export default function Pairing() {
         </SpatialCard>
 
         <SpatialCard className="animate-fade-up p-6">
-          <h3 className="text-lg font-semibold text-white">On the child device</h3>
+          <h3 className="font-mono text-[11px] font-black uppercase tracking-[0.2em] text-neon-dim">On the child device</h3>
           <ol className="mt-4 space-y-3 text-sm text-slate-300">
             {[
               'Install the Access Control child app on your child\'s device.',
@@ -94,12 +94,12 @@ export default function Pairing() {
               'Press CONNECT — the device appears in your Devices list.',
             ].map((s, i) => (
               <li key={i} className="flex gap-3">
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent/20 text-xs font-bold text-accent-soft">{i + 1}</span>
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center border-2 border-accent bg-accent/20 font-mono text-xs font-black text-accent-soft">{i + 1}</span>
                 <span>{s}</span>
               </li>
             ))}
           </ol>
-          <div className="mt-5 rounded-xl bg-white/5 p-3 text-xs text-slate-500">
+          <div className="mt-5 border-2 border-space-600 bg-space-700/60 p-3 font-mono text-[11px] leading-relaxed text-slate-500">
             Security: the code is single-use and brute-force limited. The child device receives a
             private credential — knowing a code alone never grants access.
           </div>

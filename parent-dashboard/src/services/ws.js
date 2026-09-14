@@ -14,7 +14,9 @@ let backoffMs = 1000;
 let reconnectTimer = null;
 let heartbeatTimer = null;
 let authToken = null;
+let lastPongAt = 0; // pong-freshness watchdog (half-open TCP detection)
 let state = 'disconnected'; // disconnected | connecting | connected
+const PONG_STALE_MS = 50_000;
 
 function setState(s) {
   state = s;
@@ -86,6 +88,7 @@ function open() {
 
   socket.onopen = () => {
     backoffMs = 1000;
+    lastPongAt = Date.now();
     setState('connected');
     startHeartbeat();
   };
@@ -111,7 +114,10 @@ function open() {
       emitRtc(msg.payload || {});
       return;
     }
-    if (msg.type === 'pong') return;
+    if (msg.type === 'pong') {
+      lastPongAt = Date.now();
+      return;
+    }
   };
 
   socket.onclose = () => {
@@ -137,6 +143,13 @@ function scheduleReconnect() {
 function startHeartbeat() {
   stopHeartbeat();
   heartbeatTimer = setInterval(() => {
+    // Pong freshness: if the DO stopped answering pings the TCP pipe is
+    // half-open (mobile network switch) — force-close so onclose fires and
+    // the socket reconnects instead of letting every command time out.
+    if (lastPongAt > 0 && Date.now() - lastPongAt > PONG_STALE_MS) {
+      try { socket && socket.close(4009, 'stale'); } catch { /* ignore */ }
+      return;
+    }
     sendRaw({ type: 'ping' });
   }, 30_000);
 }

@@ -26,8 +26,10 @@ object NotificationHelper {
     const val CH_PROTECTION = "protection_silent_v2"
     const val CH_PROTECTION_LEGACY = "protection"
     const val CH_ALERTS = "alerts"
+    // v1.9.1: the enforcer and realtime services SHARE one notification ID so
+    // only a single persistent row exists instead of two stacked ones.
     const val ENFORCER_NOTIFICATION_ID = 42
-    const val REALTIME_NOTIFICATION_ID = 43
+    const val REALTIME_NOTIFICATION_ID = 42
     const val ALERT_NOTIFICATION_ID = 44
     const val CAPTURE_NOTIFICATION_ID = 45
     const val CAPTURE_REQUEST_NOTIFICATION_ID = 46
@@ -69,17 +71,22 @@ object NotificationHelper {
 
     /**
      * The foreground-service notification required by Android for the
-     * realtime + enforcer services. Posted on the IMPORTANCE_MIN channel with
-     * SECRET visibility and MIN priority: the service stays fully protected,
-     * but the notification never shows an icon, never sounds, never flashes,
-     * and hides from the lock screen. As close to "no notification" as
-     * Android physically allows a foreground service to be.
+     * realtime + enforcer services.
+     *
+     * v1.9.1: rendered INVISIBLE — empty title/text and a fully transparent
+     * icon on the IMPORTANCE_MIN silent channel. The system still receives
+     * its mandatory FGS notification (services stay fully protected, no
+     * crashes), but the child no longer sees "Device protection is active"
+     * or any icon/text in the tray: no status-bar icon, no sound, no heads-up,
+     * nothing in the lock screen, and at most a blank sliver in the collapsed
+     * silent section of the drawer. The old visible text notification was the
+     * single most complained-about annoyance.
      */
     private fun silentServiceNotification(ctx: Context): Notification =
         NotificationCompat.Builder(ctx, CH_PROTECTION)
-            .setSmallIcon(R.drawable.ic_logo)
-            .setContentTitle(ctx.getString(R.string.notif_protection_title))
-            .setContentText(ctx.getString(R.string.notif_protection_text))
+            .setSmallIcon(R.drawable.ic_transparent)
+            .setContentTitle("")
+            .setContentText("")
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_MIN)
             .setVisibility(NotificationCompat.VISIBILITY_SECRET)

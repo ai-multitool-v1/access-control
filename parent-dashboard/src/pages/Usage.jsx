@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../services/api.js';
-import { PageHeader, SpatialCard, Stat, BarList, EmptyState, ErrorBanner, fmtMinutes } from '../components/ui.jsx';
+import { PageHeader, SpatialCard, Stat, BarList, EmptyState, ErrorBanner, Loading, fmtMinutes } from '../components/ui.jsx';
+import { Timer } from 'lucide-react';
 
 export default function Usage() {
   const [devices, setDevices] = useState([]);
@@ -35,7 +36,7 @@ export default function Usage() {
       <ErrorBanner message={error} />
 
       {devices.length === 0 ? (
-        <EmptyState icon="⏱️" title="No devices" hint="Pair a device to see usage." />
+        <EmptyState icon={<Timer className="h-10 w-10" />} title="No devices" hint="Pair a device to see usage." />
       ) : (
         <>
           <div className="mb-6 flex flex-wrap gap-3">
@@ -46,7 +47,7 @@ export default function Usage() {
           </div>
 
           {loading ? (
-            <div className="py-12 text-center text-slate-400">Loading usage…</div>
+            <Loading label="Loading usage…" />
           ) : (
             <div className="grid gap-6 lg:grid-cols-3">
               <div className="grid grid-cols-1 gap-4">
@@ -54,7 +55,7 @@ export default function Usage() {
                 <Stat label="Apps tracked" value={data?.apps?.length || 0} sub="with foreground activity" />
               </div>
               <SpatialCard className="p-5 lg:col-span-2">
-                <h3 className="mb-4 text-lg font-semibold text-white">Apps by foreground time</h3>
+                <h3 className="mb-4 font-mono text-[11px] font-black uppercase tracking-[0.2em] text-neon-dim">Apps by foreground time</h3>
                 <BarList items={(data?.apps || []).slice(0, 12).map((a) => ({
                   label: a.app_label || a.package_name,
                   sublabel: a.package_name,

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../services/api.js';
-import { PageHeader, SpatialCard, EmptyState, ErrorBanner, Toggle } from '../components/ui.jsx';
+import { PageHeader, SpatialCard, EmptyState, ErrorBanner, Toggle, Loading } from '../components/ui.jsx';
 
 export default function Notifications() {
   const [settings, setSettings] = useState(null);
@@ -48,14 +48,14 @@ export default function Notifications() {
     <div>
       <PageHeader title="Notifications" subtitle="Choose which events notify you" />
       <ErrorBanner message={error} />
-      {msg && <p className="animate-fade-up mb-4 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">{msg}</p>}
+      {msg && <p className="animate-fade-up mb-4 border-2 border-neon/40 bg-neon/5 px-4 py-3 font-mono text-xs font-bold uppercase tracking-wider text-neon shadow-brutal">{msg}</p>}
 
       {!settings ? (
-        <p className="py-12 text-center text-slate-400">Loading…</p>
+        <Loading />
       ) : (
         <div className="grid gap-6 lg:grid-cols-2">
           <SpatialCard className="p-5">
-            <h3 className="mb-4 text-lg font-semibold text-white">Event notifications (Telegram)</h3>
+            <h3 className="mb-4 flex items-center gap-2 font-mono text-[11px] font-black uppercase tracking-[0.2em] text-neon-dim">Event notifications (Telegram)</h3>
             <div className="space-y-4">
               <Toggle checked={settings.on_connect !== false} onChange={(v) => save({ ...settings, onConnect: v })} label="Device connects" />
               <Toggle checked={settings.on_disconnect !== false} onChange={(v) => save({ ...settings, onDisconnect: v })} label="Device goes offline" />
@@ -65,7 +65,7 @@ export default function Notifications() {
           </SpatialCard>
 
           <SpatialCard className="p-5">
-            <h3 className="mb-4 text-lg font-semibold text-white">Push (FCM)</h3>
+            <h3 className="mb-4 flex items-center gap-2 font-mono text-[11px] font-black uppercase tracking-[0.2em] text-neon-dim">Push (FCM)</h3>
             <p className="mb-4 text-sm text-slate-400">
               Sends a Firebase push to the child device — also used to wake the app when a command
               arrives while it's offline.

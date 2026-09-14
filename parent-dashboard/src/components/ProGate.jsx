@@ -19,10 +19,10 @@ export default function ProGate({ premium, loading, title, description, children
       <div className="pointer-events-none absolute inset-0 opacity-[0.06]"
         style={{ backgroundImage: 'repeating-linear-gradient(45deg, #fff 0 10px, transparent 10px 20px)' }} />
       <div className="relative flex flex-col items-center gap-3 py-6">
-        <div className="flex h-14 w-14 items-center justify-center rounded-full border-2 border-accent/60 bg-accent/10">
-          <Lock className="h-7 w-7 text-accent-soft" />
+        <div className="flex h-14 w-14 items-center justify-center border-2 border-neon bg-neon/10 shadow-brutal-neon">
+          <Lock className="h-7 w-7 text-neon" />
         </div>
-        <h3 className="flex items-center gap-2 text-lg font-bold text-white">
+        <h3 className="flex items-center gap-2 font-mono text-base font-black uppercase tracking-widest text-white">
           {title || 'Pro feature'} <Crown className="h-4 w-4 text-amber-300" />
         </h3>
         <p className="max-w-md text-sm text-slate-400">

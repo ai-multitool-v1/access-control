@@ -73,7 +73,7 @@ export default function Policies() {
     <div>
       <PageHeader title="Policies" subtitle="Screen-time limits, app limits and schedules" />
       <ErrorBanner message={error} />
-      {msg && <p className="animate-fade-up mb-4 rounded-xl border border-accent-green/30 bg-accent-green/10 px-4 py-3 text-sm text-accent-green">{msg}</p>}
+      {msg && <p className="animate-fade-up mb-4 border-2 border-neon/40 bg-neon/5 px-4 py-3 font-mono text-xs font-bold uppercase tracking-wider text-neon shadow-brutal">{msg}</p>}
 
       {devices.length === 0 ? (
         <EmptyState icon={<EmptyIcon />} title="No devices" hint="Pair a device to add policies." />
@@ -138,13 +138,13 @@ export default function Policies() {
           </div>
 
           <SpatialCard className="mt-6 p-5">
-            <h3 className="mb-3 text-lg font-semibold text-white">Active policies</h3>
+            <h3 className="mb-3 font-mono text-[11px] font-black uppercase tracking-[0.2em] text-neon-dim">Active policies</h3>
             {policies.length === 0 ? (
               <p className="py-4 text-center text-sm text-slate-500">No policies yet — add one above.</p>
             ) : (
               <ul className="space-y-2">
                 {policies.map((p) => (
-                  <li key={p.id} className="flex items-center justify-between gap-3 rounded-xl bg-white/5 px-4 py-3">
+                  <li key={p.id} className="flex items-center justify-between gap-3 border-2 border-space-600 bg-space-700/60 px-4 py-3">
                     <div className="min-w-0">
                       <div className="truncate font-medium text-slate-200">{p.label || p.type}</div>
                       <div className="truncate font-mono text-xs text-slate-500">{JSON.stringify(p.payload)}</div>

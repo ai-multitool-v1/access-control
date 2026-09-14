@@ -33,7 +33,7 @@ export default function Devices() {
             <Link key={d.id} to={`/devices/${d.id}`}>
               <SpatialCard hover className="animate-fade-up p-5">
                 <div className="flex items-center justify-between">
-                  <div className="text-lg font-semibold text-white">{d.name}</div>
+                  <div className="font-mono text-lg font-black uppercase tracking-wide text-white">{d.name}</div>
                   <StatusDot ok={d.status === 'online'} label={d.status} />
                 </div>
                 <div className="mt-1 text-xs text-slate-500">{[d.brand, d.model, d.android_version && `Android ${d.android_version}`].filter(Boolean).join(' • ')}</div>

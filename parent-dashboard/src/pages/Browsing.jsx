@@ -160,7 +160,7 @@ export default function Browsing() {
                   {filtered.map((i, idx) => (
                     <li
                       key={i.id || idx}
-                      className="animate-fade-up flex items-start gap-3 rounded-lg bg-white/5 px-3 py-2.5 transition hover:bg-white/10"
+                      className="animate-fade-up flex items-start gap-3 border-2 border-space-600 bg-space-700/50 px-3 py-2.5 transition hover:border-neon"
                       style={{ animationDelay: `${Math.min(idx * 20, 400)}ms` }}
                     >
                       <span className={`chip mt-0.5 shrink-0 ${i.nsfw ? 'chip-crit' : KIND_CHIP[i.kind] || 'chip'}`}>

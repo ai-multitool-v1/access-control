@@ -89,7 +89,7 @@ export default function NotifDetailModal({ item, onClose }) {
 
 function Row({ label, value, mono = false, strong = false }) {
   return (
-    <div className="rounded-lg bg-white/5 px-3 py-2">
+    <div className="border-2 border-space-600 bg-space-700/60 px-3 py-2">
       <div className="font-mono text-[9px] font-bold uppercase tracking-[0.18em] text-slate-500">{label}</div>
       <div className={`mt-0.5 break-words ${strong ? 'text-sm font-bold text-white' : 'text-sm text-slate-200'} ${mono ? 'font-mono text-xs' : ''}`}>
         {value}
