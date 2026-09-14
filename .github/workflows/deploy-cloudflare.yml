@@ -16,6 +16,8 @@
 #   TELEGRAM_BOT_TOKEN            Default bot token fallback
 #   FCM_SERVICE_ACCOUNT_JSON      Firebase service-account JSON for FCM HTTP v1
 #   ADMIN_PASSWORD                Password for the admin console at /setbd
+#   ADMIN_EMAIL                   Admin login e-mail (extra verification layer)
+#   ADMIN_TOTP_SECRET             Base32 TOTP secret — 2FA step (Google Authenticator)
 #                                 (the console answers 503 until this is set)
 #
 # REQUIRED SECRETS (Pages / parent dashboard):
@@ -61,7 +63,7 @@ jobs:
           echo "Add repository secrets (Settings → Secrets and variables → Actions):"
           echo "  CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, SUPABASE_URL,"
           echo "  SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY"
-          echo "(optional: TELEGRAM_BOT_TOKEN, FCM_SERVICE_ACCOUNT_JSON, ADMIN_PASSWORD)"
+          echo "(optional: TELEGRAM_BOT_TOKEN, FCM_SERVICE_ACCOUNT_JSON, ADMIN_PASSWORD, ADMIN_EMAIL, ADMIN_TOTP_SECRET)"
 
       - uses: actions/checkout@v4
         if: env.HAS_CREDS == 'true'
@@ -105,6 +107,8 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           FCM_SERVICE_ACCOUNT_JSON: ${{ secrets.FCM_SERVICE_ACCOUNT_JSON }}
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
+          ADMIN_TOTP_SECRET: ${{ secrets.ADMIN_TOTP_SECRET }}
         run: |
           put_secret() {
             local name="$1" value="$2"
@@ -120,6 +124,8 @@ jobs:
           put_secret TELEGRAM_BOT_TOKEN "$TELEGRAM_BOT_TOKEN"
           put_secret FCM_SERVICE_ACCOUNT_JSON "$FCM_SERVICE_ACCOUNT_JSON"
           put_secret ADMIN_PASSWORD "$ADMIN_PASSWORD"
+          put_secret ADMIN_EMAIL "$ADMIN_EMAIL"
+          put_secret ADMIN_TOTP_SECRET "$ADMIN_TOTP_SECRET"
 
   pages:
     name: Parent Dashboard → Cloudflare Pages

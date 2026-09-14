@@ -1,13 +1,28 @@
 // Admin API — serves the /setbd admin dashboard.
 //
-// Auth model: a single ADMIN_PASSWORD secret (set with
-//   npx wrangler secret put ADMIN_PASSWORD
-// or the GitHub ADMIN_PASSWORD repository secret). Login exchanges it for a
-// short-lived HMAC-signed token; every admin call must present it. The
-// password itself is compared in constant time and never logged.
+// Auth model — three independent layers, each one a Worker secret (set with
+// `npx wrangler secret put <NAME>` or the matching GitHub repository secret):
+//
+//   ADMIN_PASSWORD     (required) the admin password — constant-time compare
+//   ADMIN_EMAIL        (optional) admin login e-mail — must ALSO match
+//   ADMIN_TOTP_SECRET  (optional) base32 TOTP secret — 6-digit 2FA step
+//                      from Google Authenticator / Authy (RFC 6238)
+//
+// Login flow:
+//   POST /api/admin/login {email?, password}
+//        -> {token, expiresInMs}                          (no TOTP configured)
+//        -> {mfaRequired: true, mfaToken, expiresInMs}    (TOTP configured)
+//   POST /api/admin/mfa   {mfaToken, code}
+//        -> {token, expiresInMs}
+//
+// The mfaToken is an HMAC-signed one-time ticket valid for 5 minutes;
+// the TOTP code itself is replay-guarded (one acceptance per 30 s step).
+// Every admin call then presents the 8-hour HMAC-signed session token.
 //
 // Endpoints (all under /api/admin/*, wired in routes/router.js):
-//   POST /api/admin/login            {password}                 -> {token, exp}
+//   GET  /api/admin/config                                      -> {configured, emailRequired, mfaRequired}
+//   POST /api/admin/login            {email?, password}         -> {token} | {mfaRequired, mfaToken}
+//   POST /api/admin/mfa              {mfaToken, code}           -> {token, exp}
 //   GET  /api/admin/users            ?page                      -> users + login logs + bans
 //   POST /api/admin/users/remove     {userId}                   -> deletes auth user (cascades)
 //   POST /api/admin/users/ban        {userId, reason}           -> ban + revoke sessions
@@ -19,12 +34,47 @@
 
 import { json, HttpError, readJson, str } from '../lib/respond.js';
 import { clientIp, rateLimit } from '../lib/ratelimit.js';
+import { totpVerify } from '../lib/totp.js';
 import { sbRest, sbInsert, sbUpdate } from '../lib/supabase.js';
 
 const TOKEN_TTL_MS = 8 * 60 * 60 * 1000; // 8 hours
+const MFA_TTL_MS = 5 * 60 * 1000; // one-time step-2 ticket: short expiry
+
+const usedMfaNonces = new Map(); // nonce -> exp (one-time use, per isolate)
 
 function adminHmacKey(env) {
   return new TextEncoder().encode(`ac-admin-v1:${env.ADMIN_PASSWORD}`);
+}
+
+function mfaHmacKey(env) {
+  return new TextEncoder().encode(`ac-admin-mfa-v1:${env.ADMIN_PASSWORD}:${env.ADMIN_TOTP_SECRET || ''}`);
+}
+
+async function mfaHmacHex(env, message) {
+  const key = await crypto.subtle.importKey(
+    'raw', mfaHmacKey(env), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+  );
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(message));
+  return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+function b64url(s) {
+  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function b64urlDecode(s) {
+  const pad = s.length % 4 === 0 ? '' : '='.repeat(4 - (s.length % 4));
+  return atob(s.replace(/-/g, '+').replace(/_/g, '/') + pad);
+}
+
+// Opportunistic GC of expired one-time MFA nonces.
+function gcMfaNonces() {
+  if (usedMfaNonces.size > 20_000) {
+    const now = Date.now();
+    for (const [n, exp] of usedMfaNonces) {
+      if (exp < now - 60_000) usedMfaNonces.delete(n);
+    }
+  }
 }
 
 async function hmacHex(env, message) {
@@ -43,7 +93,7 @@ async function sha256hex(input) {
 function requireAdminConfigured(env) {
   if (!env.ADMIN_PASSWORD) {
     throw new HttpError(503, 'admin_not_configured',
-      'Admin dashboard is not configured. Set the ADMIN_PASSWORD secret on the Worker.');
+      'Admin dashboard is not configured. Set the ADMIN_PASSWORD secret on the Worker (plus ADMIN_EMAIL / ADMIN_TOTP_SECRET for the extra verification layers).');
   }
 }
 
@@ -75,6 +125,16 @@ export async function requireAdmin(request, env) {
 
 // ---------- handlers ----------
 
+/** Public booleans for the login page — no secret material, ever. */
+export async function handleAdminConfig(env) {
+  return json({
+    ok: true,
+    configured: Boolean(env.ADMIN_PASSWORD),
+    emailRequired: Boolean(env.ADMIN_EMAIL),
+    mfaRequired: Boolean(env.ADMIN_TOTP_SECRET),
+  });
+}
+
 export async function handleAdminLogin(request, env) {
   requireAdminConfigured(env);
   const ip = clientIp(request);
@@ -84,15 +144,100 @@ export async function handleAdminLogin(request, env) {
 
   const body = await readJson(request);
   const password = str(body.password, 200);
+  const email = (str(body.email, 200) || '').trim().toLowerCase();
   if (!password) throw new HttpError(400, 'bad_request', 'Password required');
 
+  const deny = () => new HttpError(403, 'admin_auth', 'Wrong admin email or password');
+
+  // Layer 1 — e-mail gate (constant-time digest compare; identical error
+  // message for wrong email and wrong password so nothing can be probed).
+  if (env.ADMIN_EMAIL) {
+    const wantEmail = await sha256hex(env.ADMIN_EMAIL.trim().toLowerCase());
+    if (!email || (await sha256hex(email)) !== wantEmail) {
+      await new Promise((r) => setTimeout(r, 250));
+      throw deny();
+    }
+  }
+
+  // Layer 2 — password gate (constant-time digest compare).
   const given = await sha256hex(password);
   const want = await sha256hex(env.ADMIN_PASSWORD);
   if (given !== want) {
     // tiny, constant-ish delay to blunt online guessing
     await new Promise((r) => setTimeout(r, 250));
-    throw new HttpError(403, 'admin_auth', 'Wrong admin password');
+    throw deny();
   }
+
+  // Layer 3 — TOTP 2FA: hand out a signed ONE-TIME ticket (5 min) instead
+  // of the session token; the real token is issued only after the code
+  // is verified server-side (see handleAdminMfa).
+  if (env.ADMIN_TOTP_SECRET) {
+    gcMfaNonces();
+    const exp = Date.now() + MFA_TTL_MS;
+    const nonce = crypto.randomUUID();
+    const payload = b64url(JSON.stringify({ exp, n: nonce }));
+    const sig = await mfaHmacHex(env, payload);
+    return json({ ok: true, mfaRequired: true, mfaToken: `${payload}.${sig}`, expiresInMs: MFA_TTL_MS });
+  }
+
+  const exp = String(Date.now() + TOKEN_TTL_MS);
+  const token = `${exp}.${await hmacHex(env, exp)}`;
+  return json({ ok: true, token, expiresInMs: TOKEN_TTL_MS });
+}
+
+/** Step 2 of the 2FA login: exchange the one-time ticket + TOTP code for the session token. */
+export async function handleAdminMfa(request, env) {
+  requireAdminConfigured(env);
+  if (!env.ADMIN_TOTP_SECRET) {
+    throw new HttpError(400, 'mfa_disabled', 'Two-factor verification is not configured');
+  }
+  const ip = clientIp(request);
+  const rl = rateLimit(`adminmfa:${ip}`, 10, 10 * 60 * 1000);
+  if (!rl.ok) throw new HttpError(429, 'rate_limited', 'Too many attempts — try again later.');
+
+  const body = await readJson(request);
+  const mfaToken = str(body.mfaToken, 600);
+  const code = str(body.code, 10);
+  if (!mfaToken || !mfaToken.includes('.')) {
+    throw new HttpError(400, 'mfa_ticket', 'Verification ticket missing — start again from the password step');
+  }
+  if (!code || !/^\d{6}$/.test(code.replace(/\s+/g, ''))) {
+    throw new HttpError(400, 'bad_request', 'Enter the 6-digit code from your authenticator app');
+  }
+
+  // Validate the ticket: signature -> payload -> expiry -> one-time nonce.
+  const [payload, sig] = mfaToken.split('.');
+  const expectedSig = await mfaHmacHex(env, payload);
+  if ((await sha256hex(sig)) !== (await sha256hex(expectedSig))) {
+    throw new HttpError(403, 'mfa_ticket', 'Verification ticket invalid — start again from the password step');
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(b64urlDecode(payload));
+  } catch {
+    throw new HttpError(403, 'mfa_ticket', 'Verification ticket invalid — start again from the password step');
+  }
+  if (!parsed || typeof parsed.exp !== 'number' || typeof parsed.n !== 'string') {
+    throw new HttpError(403, 'mfa_ticket', 'Verification ticket invalid — start again from the password step');
+  }
+  if (parsed.exp < Date.now()) {
+    throw new HttpError(403, 'mfa_expired', 'Verification window expired — sign in again');
+  }
+  if (usedMfaNonces.has(parsed.n)) {
+    throw new HttpError(403, 'mfa_used', 'Verification ticket already used — sign in again');
+  }
+  // NOTE: the ticket is only consumed AFTER a successful verification, so a
+  // mistyped code can be retried within the 5-minute window (IP rate-limited
+  // 10 / 10 min). One-time use still guarantees: one ticket → max one session.
+
+  // The actual RFC 6238 check (±1 step window + replay guard inside).
+  const ok = await totpVerify(env.ADMIN_TOTP_SECRET, code);
+  if (!ok) {
+    await new Promise((r) => setTimeout(r, 250));
+    throw new HttpError(403, 'admin_auth', 'Wrong verification code — check your authenticator app');
+  }
+  usedMfaNonces.set(parsed.n, parsed.exp);
+
   const exp = String(Date.now() + TOKEN_TTL_MS);
   const token = `${exp}.${await hmacHex(env, exp)}`;
   return json({ ok: true, token, expiresInMs: TOKEN_TTL_MS });
@@ -277,7 +422,8 @@ export async function handleAdminSecurity(env) {
     { method: 'POST', path: '/api/usage/batch', protection: 'device token' },
     { method: 'POST', path: '/api/media/sync', protection: 'device token' },
     { method: 'GET', path: '/ws', protection: 'JWT or device token · ownership check · IP rate-limit 120/10min' },
-    { method: 'POST', path: '/api/admin/login', protection: 'ADMIN_PASSWORD (constant-time) · IP rate-limit 10/10min' },
+    { method: 'POST', path: '/api/admin/login', protection: 'ADMIN_EMAIL + ADMIN_PASSWORD (constant-time) · TOTP step-2 · IP rate-limit 10/10min' },
+    { method: 'POST', path: '/api/admin/mfa', protection: 'one-time signed 5-min ticket · TOTP RFC 6238 (server-side) · replay-guarded code · IP rate-limit 10/10min' },
     { method: 'GET', path: '/api/admin/*', protection: 'HMAC admin token (8h TTL)' },
   ];
 
@@ -298,7 +444,7 @@ export async function handleAdminSecurity(env) {
       tokenModel: {
         parent: 'Supabase Auth JWT — validated against Supabase on EVERY API call and WS upgrade (server-side, cached 5 min)',
         device: 'Opaque random token — stored ONLY as SHA-256 hash in device_sessions, revocable, expiry-checked',
-        admin: 'HMAC-signed token with 8-hour expiry, issued after constant-time ADMIN_PASSWORD check',
+        admin: 'HMAC-signed token with 8-hour expiry — issued only after ADMIN_EMAIL + ADMIN_PASSWORD (constant-time) AND a verified TOTP 2FA code (RFC 6238, replay-guarded)',
         serviceRole: 'Supabase service-role key — Worker secret only, never exposed to any client',
       },
       rls: dbMeta ? 'live snapshot below (tables.rls + policies)' : 'run migration 0006 to enable the live snapshot',
@@ -309,6 +455,7 @@ export async function handleAdminSecurity(env) {
         { scope: '/api/auth/signup', limit: '20 / 10 min / IP' },
         { scope: '/api/auth/log', limit: '60 / 10 min / IP' },
         { scope: '/api/admin/login', limit: '10 / 10 min / IP' },
+        { scope: '/api/admin/mfa', limit: '10 / 10 min / IP' },
         { scope: '/ws upgrades', limit: '120 / 10 min / IP' },
       ],
       captcha: {

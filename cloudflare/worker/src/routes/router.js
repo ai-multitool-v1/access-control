@@ -19,8 +19,8 @@ import { pushBrowserHistory, getBrowserHistory } from '../api/browser.js';
 import { handleSignup, handleAuthLog } from '../api/auth.js';
 import { handleCaptchaNew, handleCaptchaVerify } from '../api/captcha.js';
 import {
-  handleAdminLogin, handleAdminUsers, handleAdminRemoveUser,
-  handleAdminBan, handleAdminUnban, handleAdminSecurity, requireAdmin,
+  handleAdminLogin, handleAdminMfa, handleAdminConfig, handleAdminUsers,
+  handleAdminRemoveUser, handleAdminBan, handleAdminUnban, handleAdminSecurity, requireAdmin,
 } from '../api/admin.js';
 import { listRestrictions, upsertRestriction, childRestrictions } from '../api/restrictions.js';
 import { listZones, createZone, updateZone, deleteZone, childZones } from '../api/zones.js';
@@ -69,8 +69,15 @@ export async function handleApi(request, env) {
 
   // ---- admin (/setbd dashboard) ----
   if (p.startsWith('/api/admin/')) {
+    // public, pre-auth endpoints: config booleans + login step 1/2
+    if (p === '/api/admin/config' && method === 'GET') {
+      return handleAdminConfig(env);
+    }
     if (p === '/api/admin/login' && method === 'POST') {
       return handleAdminLogin(request, env);
+    }
+    if (p === '/api/admin/mfa' && method === 'POST') {
+      return handleAdminMfa(request, env);
     }
     await requireAdmin(request, env);
     if (p === '/api/admin/users' && method === 'GET') {

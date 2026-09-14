@@ -2,8 +2,11 @@
 //
 // A completely separate app from the parent dashboard: own HTML entry
 // (admin.html), own React root, no shared navigation, no links from the
-// parent UI. Auth is a single admin password exchanged for an HMAC-signed
-// 8-hour token (see worker/src/api/admin.js).
+// parent UI. Auth is a layered login (see worker/src/api/admin.js):
+//   1. admin e-mail   (ADMIN_EMAIL — shown only when configured)
+//   2. admin password (ADMIN_PASSWORD)
+//   3. TOTP 2FA code  (ADMIN_TOTP_SECRET — 6-digit step shown only when
+//      configured; the Worker verifies it server-side, RFC 6238)
 
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -67,28 +70,104 @@ function KV({ k, v, mono = true }) {
 
 // ---------- login gate ----------
 
+async function adminPost(path, body) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data?.error?.message || `Login failed (${res.status})`);
+  return data;
+}
+
 function AdminLogin({ onToken }) {
+  // config booleans from the Worker — decide which fields/steps exist
+  const [cfg, setCfg] = useState(null); // {configured, emailRequired, mfaRequired}
+  const [step, setStep] = useState('creds'); // 'creds' | 'mfa'
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [mfaToken, setMfaToken] = useState('');
+  const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
-  async function submit(e) {
+  useEffect(() => {
+    let alive = true;
+    fetch(`${API_BASE}/api/admin/config`)
+      .then((r) => r.json())
+      .then((d) => { if (alive) setCfg(d); })
+      .catch(() => { if (alive) setCfg({ configured: true, emailRequired: false, mfaRequired: false }); });
+    return () => { alive = false; };
+  }, []);
+
+  async function submitCreds(e) {
     e.preventDefault();
     setBusy(true); setError('');
     try {
-      const res = await fetch(`${API_BASE}/api/admin/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
+      const d = await adminPost('/api/admin/login', {
+        password,
+        ...(cfg?.emailRequired ? { email: email.trim() } : {}),
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error?.message || 'Login failed');
-      onToken(data.token);
+      if (d.mfaRequired && d.mfaToken) {
+        setMfaToken(d.mfaToken);
+        setCode('');
+        setStep('mfa');
+      } else if (d.token) {
+        onToken(d.token);
+      } else {
+        throw new Error('Unexpected response');
+      }
     } catch (e2) {
       setError(e2.message);
     } finally {
       setBusy(false);
     }
+  }
+
+  async function submitMfa(e) {
+    e.preventDefault();
+    setBusy(true); setError('');
+    try {
+      const d = await adminPost('/api/admin/mfa', { mfaToken, code: code.trim() });
+      if (d.token) onToken(d.token);
+      else throw new Error('Unexpected response');
+    } catch (e2) {
+      setError(e2.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function restart() {
+    setStep('creds');
+    setMfaToken('');
+    setCode('');
+    setPassword('');
+    setError('');
+  }
+
+  if (cfg && cfg.configured === false) {
+    return (
+      <div className="flex min-h-screen items-center justify-center px-4">
+        <div className="w-full max-w-sm border-2 border-hazard bg-space-800/70 p-8">
+          <div className="mb-4 flex flex-col items-center gap-3 text-center">
+            <div className="flex h-14 w-14 items-center justify-center border-2 border-hazard bg-hazard/10">
+              <AlertTriangle className="h-7 w-7 text-red-300" />
+            </div>
+            <h1 className="font-mono text-xl font-black uppercase tracking-[0.25em] text-white">Not configured</h1>
+            <p className="font-mono text-[11px] leading-relaxed text-slate-400">
+              Admin console is locked. Set the Worker secrets and redeploy:
+            </p>
+          </div>
+          <ul className="space-y-1 font-mono text-[10px] text-slate-500">
+            <li>· ADMIN_PASSWORD — admin password</li>
+            <li>· ADMIN_EMAIL — admin login e-mail</li>
+            <li>· ADMIN_TOTP_SECRET — 2FA key (authenticator)</li>
+          </ul>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -99,17 +178,52 @@ function AdminLogin({ onToken }) {
             <Lock className="h-7 w-7 text-red-300" />
           </div>
           <h1 className="font-mono text-xl font-black uppercase tracking-[0.25em] text-white">SETBD Console</h1>
-          <p className="font-mono text-[10px] uppercase tracking-widest text-slate-500">Restricted area — admin access only</p>
+          <p className="font-mono text-[10px] uppercase tracking-widest text-slate-500">
+            Restricted area — admin access only
+          </p>
+          {step === 'mfa' && (
+            <p className="font-mono text-[10px] uppercase tracking-widest text-neon">Step 2 of 2 — two-factor code</p>
+          )}
         </div>
-        <form onSubmit={submit} className="space-y-4">
-          <div>
-            <label className="label-text" htmlFor="apw">Admin password</label>
-            <input id="apw" type="password" required autoFocus className="input-field"
-              value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" />
-          </div>
-          {error && <p className="border-2 border-hazard/60 bg-hazard/10 px-3 py-2 font-mono text-xs text-red-300">{error}</p>}
-          <button className="btn-primary w-full" disabled={busy}>{busy ? 'Verifying…' : 'Unlock console'}</button>
-        </form>
+
+        {step === 'creds' ? (
+          <form onSubmit={submitCreds} className="space-y-4">
+            {cfg?.emailRequired && (
+              <div>
+                <label className="label-text" htmlFor="aem">Admin e-mail</label>
+                <input id="aem" type="email" required autoComplete="username" className="input-field"
+                  value={email} onChange={(e) => setEmail(e.target.value)} placeholder="admin@example.com" />
+              </div>
+            )}
+            <div>
+              <label className="label-text" htmlFor="apw">Admin password</label>
+              <input id="apw" type="password" required autoFocus className="input-field"
+                value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" />
+            </div>
+            {error && <p className="border-2 border-hazard/60 bg-hazard/10 px-3 py-2 font-mono text-xs text-red-300">{error}</p>}
+            <button className="btn-primary w-full" disabled={busy}>{busy ? 'Verifying…' : 'Continue'}</button>
+          </form>
+        ) : (
+          <form onSubmit={submitMfa} className="space-y-4">
+            <div>
+              <label className="label-text text-center block" htmlFor="aotp">6-digit verification code</label>
+              <input id="aotp" type="text" inputMode="numeric" autoComplete="one-time-code" required autoFocus
+                className="input-field text-center font-mono text-lg tracking-[0.5em]"
+                value={code} maxLength={6}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                placeholder="••••••" />
+              <p className="mt-1 text-center font-mono text-[10px] text-slate-500">Open your authenticator app — code rotates every 30 s</p>
+            </div>
+            {error && <p className="border-2 border-hazard/60 bg-hazard/10 px-3 py-2 font-mono text-xs text-red-300">{error}</p>}
+            <button className="btn-primary w-full" disabled={busy || code.length !== 6}>
+              {busy ? 'Verifying…' : 'Unlock console'}
+            </button>
+            <button type="button" onClick={restart}
+              className="w-full font-mono text-[10px] uppercase tracking-widest text-slate-500 hover:text-slate-300">
+              ← start over
+            </button>
+          </form>
+        )}
       </div>
     </div>
   );
