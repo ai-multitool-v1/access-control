@@ -62,7 +62,7 @@ class AccessControlApp : Application() {
                     )
                 }
                 // 2) durable path: REST event so it survives a dead socket
-                thread(daemon = false) {
+                thread(isDaemon = false) {
                     runCatching {
                         kotlinx.coroutines.runBlocking {
                             org.setbd.control.websocket.CommandProcessor.postEvent(

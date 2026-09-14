@@ -42,13 +42,15 @@ class RealtimeService : Service(), WsClient.Listener {
     // used to kill the whole process (SupervisorJob only isolates siblings, it
     // does NOT swallow errors) — one unexpected throw in a command handler or
     // the status loop crashed the app while mirroring. Now it is logged and
-    // the service keeps running.
+    // the service keeps running. The report runs in an ad-hoc scope so the
+    // type checker never sees a crashGuard -> scope -> crashGuard cycle.
     private val crashGuard = kotlinx.coroutines.CoroutineExceptionHandler { _, e ->
         Log.w(TAG, "realtime coroutine error contained", e)
         runCatching {
-            scope.launch {
+            val svc = this@RealtimeService
+            CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
                 org.setbd.control.websocket.CommandProcessor.postEvent(
-                    this@RealtimeService,
+                    svc,
                     "app_crash",
                     "warning",
                     "Internal error contained: ${e.javaClass.simpleName}",
@@ -57,7 +59,8 @@ class RealtimeService : Service(), WsClient.Listener {
             }
         }
     }
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + crashGuard)
+    private val scope: CoroutineScope =
+        CoroutineScope(SupervisorJob() + Dispatchers.Default + crashGuard)
     private val handler = Handler(Looper.getMainLooper())
     private var ws: WsClient? = null
     private var backoffMs = 1_000L

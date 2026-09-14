@@ -128,6 +128,19 @@ class BlockActivity : AppCompatActivity() {
         finish()
     }
 
+    /** Parent-pushed overlay pictures arrive as data:image/... base64 URIs. */
+    private fun decodeDataImage(dataUri: String): Bitmap? {
+        if (!dataUri.startsWith("data:image/")) return null
+        val comma = dataUri.indexOf(',')
+        if (comma <= 0 || comma >= dataUri.length - 1) return null
+        return try {
+            val raw = Base64.decode(dataUri.substring(comma + 1), Base64.DEFAULT)
+            BitmapFactory.decodeByteArray(raw, 0, raw.size)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     companion object {
         /** True while the block screen is on screen (read by PolicyEnforcerService). */
         @Volatile
