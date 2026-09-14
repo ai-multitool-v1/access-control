@@ -12,6 +12,51 @@ export function b64ToBytes(b64) {
   return bytes;
 }
 
+export function bytesToB64(bytes) {
+  let bin = '';
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(bin);
+}
+
+// Upload cap per write_file command: the DO drops WS messages over 512 KB,
+// so each chunk stays far below that after base64 (+JSON) expansion.
+export const WRITE_CHUNK_BYTES = 192 * 1024;
+
+/**
+ * Push a whole file from the parent's device to the child in 192 KB chunks
+ * (first chunk truncates, the rest append). Big uploads are fully supported —
+ * the progress callback reports overall bytes.
+ */
+export async function uploadToDevice({ path, name, bytes }, { onProgress, token } = {}) {
+  const b64 = bytesToB64(bytes);
+  const chunkChars = Math.floor(WRITE_CHUNK_BYTES / 3) * 4; // base64-safe split
+  let sentRaw = 0;
+  let at = 0;
+  let first = true;
+  while (at < b64.length || first) {
+    if (token && token.aborted) throw new Error('Upload cancelled');
+    const slice = b64.slice(at, at + chunkChars);
+    const rawLen = Math.floor((slice.length * 3) / 4);
+    if (slice.length === 0 && !first) break;
+    const res = await command('write_file', {
+      path,
+      name,
+      data: slice,
+      append: !first,
+    }, 45_000);
+    if (!res || res.error) throw new Error(res?.error || 'Write failed on the device');
+    sentRaw += rawLen;
+    at += chunkChars;
+    first = false;
+    onProgress && onProgress({ loaded: Math.min(sentRaw, bytes.length), total: bytes.length });
+    if (at >= b64.length) break;
+  }
+  return { written: sentRaw, totalSize: bytes.length };
+}
+
 function concatBytes(parts) {
   const total = parts.reduce((a, p) => a + p.length, 0);
   const out = new Uint8Array(total);

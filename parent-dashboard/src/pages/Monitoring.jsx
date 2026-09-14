@@ -340,6 +340,7 @@ function MonitoringInner() {
       push('Remote session requested');
       if (res?.alreadyLive) push('Screen mirror already running');
       else if (res?.reusedGrant) push('Starting with the saved screen-share consent…');
+      else if (res?.justConfirmed) push('Screen share was just confirmed — connecting, do NOT tap Start again (the dialog would re-open)');
       else if (res?.alreadyPrompted) push('Consent dialog is already open on the child device — auto-confirm runs while Device admin + Accessibility are ON');
       else if (res?.needsConsent) push('Waiting for screen-share consent on the child device (a prompt was posted)');
       else if (res?.starting) push('Consent dialog opened on the child device — confirming automatically');

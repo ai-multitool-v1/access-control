@@ -501,6 +501,297 @@ object FileBrowserProvider {
     }
 
     // ------------------------------------------------------------------
+    // File management (parent file manager: read/write/delete/rename)
+    // ------------------------------------------------------------------
+
+    /** Every managed path resolves under shared storage — never outside. */
+    private fun rootDir(): File = Environment.getExternalStorageDirectory()
+
+    /**
+     * Resolve `rel` under `root`, refusing any traversal that escapes it
+     * (".." tricks, symlinked canonical escapes). Returns the canonical file
+     * or null when the path would leave the sandbox.
+     */
+    private fun safeResolve(root: File, rel: String): File? {
+        val target = if (rel.isBlank()) root else File(root, rel)
+        return try {
+            val canonRoot = root.canonicalFile
+            val canon = target.canonicalFile
+            if (canon == canonRoot || canon.path.startsWith(canonRoot.path + File.separator)) canon else null
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun writeAccess(ctx: Context): Boolean = PermissionManager.allFilesAccessGranted(ctx)
+
+    private val RESERVED_NAMES = setOf(".", "..")
+
+    private fun validSegment(name: String): Boolean =
+        name.isNotBlank() && name !in RESERVED_NAMES &&
+            !name.contains('/') && !name.contains('\\') &&
+            name != "." && name != ".." && name.length <= 200
+
+    /**
+     * Write (create / overwrite / append) bytes to one file in shared storage.
+     * The parent sends base64 chunks of ≤256 KB raw; big uploads chain several
+     * `append` calls — the first chunk uses append=false to truncate.
+     */
+    fun writeFile(ctx: Context, dirPath: String, name: String, dataB64: String, append: Boolean): JSONObject {
+        if (!writeAccess(ctx)) return JSONObject().put("error", "missing_permission")
+        if (!validSegment(name)) return JSONObject().put("error", "bad_name")
+        val dir = safeResolve(rootDir(), dirPath.trim('/')) ?: return JSONObject().put("error", "bad_path")
+        val f = safeResolve(dir, name) ?: return JSONObject().put("error", "bad_path")
+        return try {
+            val bytes = Base64.decode(dataB64, Base64.NO_WRAP)
+            if (bytes.size > 256 * 1024) return JSONObject().put("error", "chunk_too_large")
+            if (!f.exists() && append) return JSONObject().put("error", "not_found")
+            java.io.FileOutputStream(f, append).use { out ->
+                out.write(bytes)
+                out.fd.sync()
+            }
+            JSONObject()
+                .put("written", bytes.size)
+                .put("totalSize", f.length())
+                .put("path", dirPath.trim('/'))
+                .put("name", name)
+        } catch (e: Exception) {
+            JSONObject().put("error", "write_failed")
+        }
+    }
+
+    fun createDir(ctx: Context, dirPath: String, name: String): JSONObject {
+        if (!writeAccess(ctx)) return JSONObject().put("error", "missing_permission")
+        if (!validSegment(name)) return JSONObject().put("error", "bad_name")
+        val parent = safeResolve(rootDir(), dirPath.trim('/')) ?: return JSONObject().put("error", "bad_path")
+        val dir = safeResolve(parent, name) ?: return JSONObject().put("error", "bad_path")
+        return if (dir.exists() || dir.mkdirs()) JSONObject().put("created", true).put("path", dir.path)
+        else JSONObject().put("error", "create_failed")
+    }
+
+    /** Delete a file or a directory tree. Refuses the storage root itself. */
+    fun deletePath(ctx: Context, dirPath: String, name: String, isDir: Boolean): JSONObject {
+        if (!writeAccess(ctx)) return JSONObject().put("error", "missing_permission")
+        if (!validSegment(name)) return JSONObject().put("error", "bad_name")
+        val parent = safeResolve(rootDir(), dirPath.trim('/')) ?: return JSONObject().put("error", "bad_path")
+        val target = safeResolve(parent, name) ?: return JSONObject().put("error", "bad_path")
+        if (target == rootDir().canonicalFile) return JSONObject().put("error", "refused")
+        if (isDir && !target.isDirectory) return JSONObject().put("error", "not_found")
+        if (!isDir && !target.isFile) return JSONObject().put("error", "not_found")
+        val ok = if (target.isDirectory) deleteRecursively(target) else target.delete()
+        return if (ok) JSONObject().put("deleted", true) else JSONObject().put("error", "delete_failed")
+    }
+
+    private fun deleteRecursively(dir: File): Boolean {
+        val children = dir.listFiles() ?: return dir.delete()
+        for (c in children) {
+            if (c.isDirectory) deleteRecursively(c) else c.delete()
+        }
+        return dir.delete()
+    }
+
+    /** Rename / move within the same directory (no path separators in newName). */
+    fun renamePath(ctx: Context, dirPath: String, name: String, newName: String): JSONObject {
+        if (!writeAccess(ctx)) return JSONObject().put("error", "missing_permission")
+        if (!validSegment(name) || !validSegment(newName)) return JSONObject().put("error", "bad_name")
+        val parent = safeResolve(rootDir(), dirPath.trim('/')) ?: return JSONObject().put("error", "bad_path")
+        val target = safeResolve(parent, name) ?: return JSONObject().put("error", "bad_path")
+        val dest = safeResolve(parent, newName) ?: return JSONObject().put("error", "bad_path")
+        if (dest.exists()) return JSONObject().put("error", "already_exists")
+        return if (target.renameTo(dest)) JSONObject().put("renamed", true).put("newName", newName)
+        else JSONObject().put("error", "rename_failed")
+    }
+
+    // ------------------------------------------------------------------
+    // ZIP: extract on-device into a private cache, browse + read entries.
+    // The child's real storage is never modified by a preview.
+    // ------------------------------------------------------------------
+
+    private const val ZIP_MAX_ENTRIES = 2000
+    private const val ZIP_MAX_TOTAL_BYTES = 256L * 1024 * 1024
+    private const val ZIP_CACHE_TTL_MS = 30 * 60_000L
+    private const val ZIP_CACHE_KEEP = 3
+
+    private fun zipCacheRoot(ctx: Context): File = File(ctx.cacheDir, "zipcache")
+
+    private fun zipIdFor(f: File): String = try {
+        val md = java.security.MessageDigest.getInstance("MD5")
+        val key = "${f.canonicalPath}|${f.lastModified()}|${f.length()}"
+        md.digest(key.toByteArray()).joinToString("") { "%02x".format(it) }.take(20)
+    } catch (e: Exception) {
+        "%x".format(f.hashCode().toLong() * 31 + f.length())
+    }
+
+    private fun kindOfEntry(name: String): String = kindOf(name, mimeFor(name))
+
+    /**
+     * Extract an archive into cacheDir/zipcache/<zipId>/ and return the entry
+     * index. Re-extracting the same (path, mtime, size) reuses the cache.
+     * Zip-slip entries and bombs are rejected; extraction lives in app-private
+     * storage and is purged after 30 minutes / when newer extractions arrive.
+     */
+    fun unzip(ctx: Context, dirPath: String, name: String): JSONObject {
+        if (!writeAccess(ctx)) return JSONObject().put("error", "missing_permission")
+        if (!validSegment(name)) return JSONObject().put("error", "bad_name")
+        val parent = safeResolve(rootDir(), dirPath.trim('/')) ?: return JSONObject().put("error", "bad_path")
+        val zip = safeResolve(parent, name) ?: return JSONObject().put("error", "bad_path")
+        if (!zip.isFile || zip.length() == 0L) return JSONObject().put("error", "not_found")
+        val zipId = zipIdFor(zip)
+        val dest = File(zipCacheRoot(ctx), zipId)
+        return try {
+            if (!dest.isDirectory) {
+                dest.mkdirs()
+                var entries = 0
+                var total = 0L
+                java.util.zip.ZipFile(zip).use { zf ->
+                    val en = zf.entries()
+                    while (en.hasMoreElements()) {
+                        val e = en.nextElement()
+                        entries++
+                        if (entries > ZIP_MAX_ENTRIES) return JSONObject().put("error", "too_many_entries")
+                        val out = safeResolve(dest, e.name)
+                        if (out == null || out.path == dest.canonicalPath) continue // zip-slip / directory
+                        if (e.isDirectory) {
+                            out.mkdirs()
+                            continue
+                        }
+                        if (total + e.size > ZIP_MAX_TOTAL_BYTES) return JSONObject().put("error", "too_large")
+                        out.parentFile?.mkdirs()
+                        zf.getInputStream(e).use { ins -> out.outputStream().use { o -> ins.copyTo(o, 64 * 1024) } }
+                        total += e.size
+                    }
+                }
+            }
+            purgeZipCache(ctx, keep = zipId)
+            val entries = JSONArray()
+            val flat = ArrayList<File>()
+            flatAdd(dest, flat)
+            flat.sortedBy { it.path }.forEach { f ->
+                val rel = f.relativeTo(dest).path.replace(File.separatorChar, '/')
+                entries.put(
+                    JSONObject()
+                        .put("entry", rel)
+                        .put("size", f.length())
+                        .put("kind", kindOfEntry(f.name))
+                        .put("mime", mimeFor(f.name))
+                )
+            }
+            JSONObject()
+                .put("zipId", zipId)
+                .put("name", name.take(200))
+                .put("entries", entries)
+                .put("totalEntries", entries.length())
+                .put("truncated", false)
+        } catch (e: java.util.zip.ZipException) {
+            JSONObject().put("error", "not_a_zip")
+        } catch (e: Exception) {
+            JSONObject().put("error", "unzip_failed")
+        }
+    }
+
+    private fun flatAdd(dir: File, out: ArrayList<File>) {
+        val children = dir.listFiles() ?: return
+        for (c in children) {
+            if (c.isDirectory) flatAdd(c, out) else out.add(c)
+        }
+    }
+
+    /** Keep only the newest [ZIP_CACHE_KEEP] extraction dirs (minus `keep`). */
+    private fun purgeZipCache(ctx: Context, keep: String) {
+        try {
+            val root = zipCacheRoot(ctx)
+            val dirs = root.listFiles()?.filter { it.isDirectory } ?: return
+            val now = System.currentTimeMillis()
+            for (d in dirs) {
+                if (d.name != keep && now - d.lastModified() > ZIP_CACHE_TTL_MS) {
+                    deleteRecursively(d)
+                }
+            }
+            // second pass if still over quota: drop the oldest non-kept dirs
+            val rest = root.listFiles()?.filter { it.isDirectory && it.name != keep }
+                ?.sortedBy { it.lastModified() } ?: return
+            var over = rest.size + 1 - ZIP_CACHE_KEEP
+            for (d in rest) {
+                if (over <= 0) break
+                deleteRecursively(d)
+                over--
+            }
+        } catch (e: Exception) {
+            // cache purge is best-effort
+        }
+    }
+
+    private fun zipDirFor(ctx: Context, zipId: String): File? {
+        if (!Regex("^[0-9a-f]{6,32}$").matches(zipId)) return null
+        val dest = File(zipCacheRoot(ctx), zipId)
+        return if (dest.isDirectory) dest else null
+    }
+
+    /** List a directory inside an extracted archive (same shape as listDir). */
+    fun listZipDir(ctx: Context, zipId: String, subPath: String): JSONObject? {
+        val root = zipDirFor(ctx, zipId) ?: return null
+        val dir = safeResolve(root, subPath.trim('/')) ?: return null
+        val dirs = LinkedHashSet<String>()
+        val files = JSONArray()
+        val children = dir.listFiles()?.sortedByDescending { it.lastModified() } ?: emptyArray()
+        for (f in children) {
+            if (f.isDirectory) {
+                dirs.add(f.name)
+                if (dirs.size >= 400) break
+            } else {
+                val mime = mimeFor(f.name)
+                files.put(
+                    JSONObject()
+                        .put("name", f.name.take(200))
+                        .put("path", subPath.trim('/'))
+                        .put("size", f.length())
+                        .put("mime", mime)
+                        .put("kind", kindOf(f.name, mime))
+                        .put("modified", f.lastModified())
+                        .put("mediaId", JSONObject.NULL)
+                )
+                if (files.length() >= 1000) break
+            }
+        }
+        return JSONObject()
+            .put("path", subPath.trim('/'))
+            .put("dirs", JSONArray(dirs.toList().sorted().take(400)))
+            .put("files", files)
+            .put("source", "zip")
+            .put("zipId", zipId)
+    }
+
+    /** Chunked read of one extracted entry (playback + downloads from ZIPs). */
+    fun readZipChunk(ctx: Context, zipId: String, entry: String, offset: Long, maxBytes: Int): JSONObject? {
+        val root = zipDirFor(ctx, zipId) ?: return null
+        val f = safeResolve(root, entry.trim('/')) ?: return null
+        if (!f.isFile || !f.canRead()) return null
+        return try {
+            f.inputStream().use { stream ->
+                var toSkip = offset.coerceAtLeast(0)
+                while (toSkip > 0) {
+                    val s = stream.skip(toSkip)
+                    if (s > 0) toSkip -= s
+                    else if (stream.read() < 0) break else toSkip -= 1
+                }
+                val bytes = readUpTo(stream, maxBytes)
+                val mime = mimeFor(f.name)
+                JSONObject()
+                    .put("name", f.name.take(200))
+                    .put("mime", mime)
+                    .put("kind", kindOf(f.name, mime))
+                    .put("totalSize", f.length())
+                    .put("offset", offset)
+                    .put("sizeBytes", bytes.size)
+                    .put("eof", offset + bytes.size >= f.length())
+                    .put("data", Base64.encodeToString(bytes, Base64.NO_WRAP))
+            }
+        } catch (e: Exception) {
+            JSONObject().put("error", "read_failed")
+        }
+    }
+
+    // ------------------------------------------------------------------
     // helpers
     // ------------------------------------------------------------------
 

@@ -28,8 +28,8 @@ android {
         applicationId = "org.setbd.control"
         minSdk = 24
         targetSdk = 34
-        versionCode = 11
-        versionName = "1.7.0"
+        versionCode = 12
+        versionName = "1.10.0"
         buildConfigField("String", "API_BASE", "\"$apiBase\"")
         buildConfigField("String", "WS_BASE", "\"$wsBase\"")
     }
@@ -38,6 +38,17 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        }
+        // SOURCE PROTECTION: the CI-built debug APK is the one actually
+        // distributed — so it gets the SAME R8 shrinking/obfuscation as a
+        // release build (minus a debuggable flag, which is OFF on purpose:
+        // no JDWP heap dumps, no method tracing of the guard app). The
+        // mapping.txt artifact is the only way back to readable stack traces.
+        debug {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            isDebuggable = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }

@@ -19,15 +19,22 @@ import androidx.appcompat.app.AppCompatActivity
  */
 class MirrorConsentActivity : AppCompatActivity() {
 
+    /** Set once the projection result (OK or cancelled) has been delivered. */
+    @Volatile
+    private var resultDelivered = false
+
     private val projectionLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             val data = result.data
             if (result.resultCode == RESULT_OK && data != null) {
-                // Remember the grant: future mirror requests start silently —
-                // the child allows screen sharing ONCE, not every time.
+                // Remember the grant + confirm time: future mirror requests
+                // inside the init window never re-prompt (no "Start now →
+                // dialog again" loop), and pre-Android-14 requests reuse the
+                // grant silently. The child allows screen sharing ONCE.
                 ScreenGrantHolder.store(result.resultCode, data)
                 CaptureService.startScreen(this, data, result.resultCode)
             }
+            resultDelivered = true
             finish()
         }
 
@@ -50,8 +57,17 @@ class MirrorConsentActivity : AppCompatActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         // singleTask launchMode: a parent retry while this trampoline is still
-        // alive arrives here instead of recreating the activity — restart the
-        // consent flow so the retry actually shows the dialog again.
+        // alive arrives here instead of recreating the activity. Re-launching
+        // the consent flow while the previous dialog is still up (or while the
+        // result is being processed) STACKS two system dialogs — Android then
+        // cancels both and the child sees the cast permission flash and vanish.
+        // If a dialog was launched recently and no result came back yet, the
+        // on-screen dialog IS the current flow: swallow the duplicate instead
+        // of restarting it.
+        val dialogInFlight =
+            !resultDelivered &&
+                System.currentTimeMillis() - lastDialogLaunchAt < DIALOG_IN_FLIGHT_MS
+        if (dialogInFlight) return
         launchFlow(intent)
     }
 
@@ -67,6 +83,7 @@ class MirrorConsentActivity : AppCompatActivity() {
                 if (dialog == null) {
                     finish()
                 } else {
+                    resultDelivered = false
                     lastDialogLaunchAt = System.currentTimeMillis()
                     projectionLauncher.launch(dialog)
                 }
@@ -86,6 +103,9 @@ class MirrorConsentActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_KIND = "kind"
         const val EXTRA_FACING = "facing"
+
+        /** A launched dialog owns the screen for this long before a retry may restart it. */
+        private const val DIALOG_IN_FLIGHT_MS = 45_000L
 
         /** Timestamp of the last dialog launch — prevents stacked dialogs. */
         @Volatile

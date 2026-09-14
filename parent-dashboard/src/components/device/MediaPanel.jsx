@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { RefreshCw, Image as ImageIcon, Film, Folder, File as FileIcon, ChevronUp, X, Download, Loader2, CheckSquare, Square, Play, Package, Music } from 'lucide-react';
+import { RefreshCw, Image as ImageIcon, Film, Folder, File as FileIcon, X, Download, Loader2, CheckSquare, Square, Play, Package, Music, FolderOpen } from 'lucide-react';
 import { api } from '../../services/api.js';
 import { command } from '../../services/ws.js';
 import { transferFile, downloadBlob, makeZip, fmtBytes } from '../../lib/transfer.js';
 import { SpatialCard, fmtTime, EmptyIcon } from '../ui.jsx';
 import ProGate from '../ProGate.jsx';
 import { usePlan } from '../../services/plan.jsx';
+import FileManagerModal from './FileManagerModal.jsx';
 
 /**
  * Photos, videos & files lookup: the parent browses a thumbnail index of the
@@ -258,12 +259,9 @@ function MediaPanelInner({ deviceId, conn }) {
   const [busy, setBusy] = useState(false);
   const [kind, setKind] = useState('all');
   const [album, setAlbum] = useState('all');
-  // preview + file browser state
+  // preview + full file manager (large modal)
   const [preview, setPreview] = useState(null);       // {meta, data} | 'loading'
-  const [showFiles, setShowFiles] = useState(false);
-  const [dirPath, setDirPath] = useState('');
-  const [dirData, setDirData] = useState(null);
-  const [dirBusy, setDirBusy] = useState(false);
+  const [filesOpen, setFilesOpen] = useState(false);
   // multi-select (mark → download as ZIP)
   const [sel, setSel] = useState(() => new Map());    // key → {params, label}
   const [zipBusy, setZipBusy] = useState(false);
@@ -308,24 +306,9 @@ function MediaPanelInner({ deviceId, conn }) {
     }
   }
 
-  // ---- file browser ----
-  async function loadDir(path) {
-    setDirBusy(true);
-    setDirPath(path);
-    try {
-      const res = await command('list_files', { path }, 30_000);
-      setDirData(res);
-    } catch (e) {
-      setDirData({ path, dirs: [], files: [], error: e.message });
-    } finally {
-      setDirBusy(false);
-    }
-  }
-
+  // ---- full file manager (large modal, read/write, custom player, unzip) ----
   function openFiles() {
-    const next = !showFiles;
-    setShowFiles(next);
-    if (next && !dirData) loadDir(dirPath);
+    setFilesOpen(true);
   }
 
   // ---- selection / zip download ----
@@ -382,8 +365,6 @@ function MediaPanelInner({ deviceId, conn }) {
   const images = (media || []).filter((m) => m.kind === 'image').length;
   const videos = (media || []).filter((m) => m.kind === 'video').length;
 
-  const crumbs = dirPath ? dirPath.trim('/').split('/').filter(Boolean) : [];
-
   return (
     <SpatialCard className="p-4 sm:p-5">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -401,8 +382,8 @@ function MediaPanelInner({ deviceId, conn }) {
             <option value="all">All albums</option>
             {albums.map((a) => <option key={a} value={a}>{a}</option>)}
           </select>
-          <button className="btn-ghost px-3 py-2 text-[10px]" onClick={openFiles} title="Browse the child's file storage">
-            <Folder className="h-3.5 w-3.5" /> Files
+          <button className="btn-ghost px-3 py-2 text-[10px]" onClick={openFiles} title="Full file manager — browse, play, edit, unzip, upload">
+            <FolderOpen className="h-3.5 w-3.5" /> File manager
           </button>
           <button className="btn-ghost px-3 py-2 text-[10px]" onClick={resync} disabled={conn !== 'connected'} title="Ask the child to re-index now">
             <RefreshCw className="h-3.5 w-3.5" /> Re-index
@@ -495,106 +476,13 @@ function MediaPanelInner({ deviceId, conn }) {
         </div>
       )}
 
-      {/* ===== file browser ===== */}
-      {showFiles && (
-        <div className="mt-6 border-t-2 border-space-600 pt-4">
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            <h3 className="font-mono text-sm font-black uppercase tracking-widest text-white">
-              Files <span className="text-neon-dim">— on-device browser</span>
-            </h3>
-            <span className="ml-auto flex items-center gap-1 font-mono text-[10px] text-slate-500">
-              /storage
-              {crumbs.map((c, i) => (
-                <span key={i}>
-                  {' / '}
-                  <button className="text-neon hover:underline" onClick={() => loadDir(crumbs.slice(0, i + 1).join('/'))}>{c}</button>
-                </span>
-              ))}
-            </span>
-            {dirPath && (
-              <button className="btn-ghost px-2 py-1 text-[10px]" onClick={() => loadDir(crumbs.slice(0, -1).join('/'))}>
-                <ChevronUp className="h-3.5 w-3.5" /> Up
-              </button>
-            )}
-            {dirBusy && <Loader2 className="h-4 w-4 animate-spin text-neon" />}
-          </div>
-
-          {!dirData ? (
-            <p className="py-6 text-center font-mono text-xs uppercase text-slate-600">Loading…</p>
-          ) : dirData.permissionMissing ? (
-            <p className="py-6 text-center font-mono text-xs uppercase text-slate-600">
-              Files permission is not granted on the child device.
-            </p>
-          ) : (
-            <div className="max-h-[420px] overflow-y-auto border-2 border-space-600">
-              {dirData.dirs?.length === 0 && dirData.files?.length === 0 ? (
-                <p className="py-6 text-center font-mono text-xs uppercase text-slate-600">Empty folder.</p>
-              ) : (
-                <ul>
-                  {(dirData.dirs || []).map((d) => (
-                    <li key={`d-${d}`}>
-                      <button
-                        className="flex w-full items-center gap-3 border-b border-space-700 px-3 py-2 text-left transition hover:bg-space-700/50"
-                        onClick={() => loadDir(dirPath ? `${dirPath.replace(/\/$/, '')}/${d}` : d)}
-                      >
-                        <Folder className="h-4 w-4 shrink-0 text-amber-300" />
-                        <span className="truncate text-sm font-bold text-slate-200">{d}</span>
-                      </button>
-                    </li>
-                  ))}
-                  {(dirData.files || []).map((f) => {
-                    const key = `f-${dirPath}/${f.name}`;
-                    const checked = sel.has(key);
-                    const params = f.mediaId ? { mediaId: f.mediaId } : { path: dirPath, name: f.name };
-                    return (
-                      <li key={key} className={`border-b border-space-700 transition ${checked ? 'bg-neon/5' : ''}`}>
-                        <div className="flex w-full items-center gap-2 px-3 py-2">
-                          <button
-                            className="p-0.5"
-                            title={checked ? 'Unmark' : 'Mark for ZIP download'}
-                            onClick={() => toggleSel(key, params, `${dirPath || 'files'}/${f.name}`.replace(/^\//, ''))}
-                          >
-                            {checked ? <CheckSquare className="h-4 w-4 text-neon" /> : <Square className="h-4 w-4 text-slate-500" />}
-                          </button>
-                          <button
-                            className="flex min-w-0 flex-1 items-center gap-3 text-left hover:bg-space-700/50"
-                            onClick={() => openPreview(f.mediaId ? { mediaId: f.mediaId } : { path: dirPath, name: f.name })}
-                          >
-                            <FileIcon className="h-4 w-4 shrink-0 text-slate-500" />
-                            <span className="min-w-0 flex-1">
-                              <span className="block truncate text-sm text-slate-200">{f.name}</span>
-                              <span className="block truncate font-mono text-[9px] uppercase text-slate-600">{f.mime}</span>
-                            </span>
-                            <span className="shrink-0 font-mono text-[10px] text-slate-500">
-                              {f.size ? fmtBytes(f.size) : ''}
-                            </span>
-                          </button>
-                          <button
-                            className="shrink-0 border-2 border-space-600 p-1 text-slate-400 transition hover:border-neon hover:text-neon"
-                            title="Download this file now"
-                            onClick={async () => {
-                              try {
-                                const res = await transferFile(params, {});
-                                downloadBlob(res.blob, f.name);
-                              } catch (e) {
-                                setMsg(`Download failed: ${e.message}`);
-                              }
-                            }}
-                          >
-                            <Download className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-          )}
-          <p className="mt-2 font-mono text-[10px] uppercase tracking-wider text-slate-600">
-            Mark any items (gallery or files) then Download ZIP — or use the per-file download button. Everything streams encrypted through the realtime channel, nothing is stored server-side.
-          </p>
-        </div>
+      {/* ===== full file manager (large modal) ===== */}
+      {filesOpen && (
+        <FileManagerModal
+          deviceId={deviceId}
+          conn={conn}
+          onClose={() => setFilesOpen(false)}
+        />
       )}
 
       {preview === 'loading' && (
@@ -607,9 +495,9 @@ function MediaPanelInner({ deviceId, conn }) {
   );
 }
 
-// Free-plan paywall: the media gallery + on-device file browser are Pro-only
-// (media REST + media_preview / list_files / read_file WS commands are also
-// refused server-side for free accounts).
+// Free-plan paywall: the media gallery + full file manager are Pro-only
+// (media REST + media_preview / list_files / read_file / write ops WS commands
+// are also refused server-side for free accounts).
 export default function MediaPanel(props) {
   const { premium, loading } = usePlan();
   return (

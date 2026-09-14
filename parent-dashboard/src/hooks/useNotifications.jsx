@@ -9,11 +9,22 @@ import { onAnyEvent, unwatchAll, watchDevices } from '../services/notifBus.js';
  *  - live toasts (bottom-right) whenever a child device shares a notification
  *    or raises an alert (SOS / zone exit / blocked app),
  *  - a bell with an unread badge + dropdown feed, persisted in localStorage.
+ *
+ * Reliability (v1.10): device sockets used to be opened ONCE with a mount-time
+ * token and never refreshed — after an hour (or one network switch) toasts and
+ * the bell went silently dead while the device feed still worked. Now the
+ * device list is re-synced on every auth change, on a 5-minute interval and
+ * after pairing, and notifBus re-authenticates each reconnect.
  */
 
 const STORE_KEY = 'ac_notif_items';
 const READ_KEY = 'ac_notif_reads';
 const MAX_ITEMS = 60;
+// The child delivers a captured notification over the live WS AND queues it
+// for the REST batch — both fan out to the parent. Deduplicate identical
+// events inside this window so the toast + bell never double-fire.
+const DEDUPE_WINDOW_MS = 6_000;
+const DEVICES_REFRESH_MS = 5 * 60_000;
 
 const NotifCtx = createContext({
   toasts: [],
@@ -62,13 +73,37 @@ export function NotificationsProvider({ children }) {
   useEffect(() => {
     if (PREVIEW_MODE) return undefined;
     let active = true;
-    supabase.auth.getSession().then(({ data }) => {
-      const token = data?.session?.access_token;
-      if (!active || !token) return;
-      api('/api/devices').then((d) => watchDevices(d.devices || [], token)).catch(() => {});
+    let recentSigs = []; // dedupe window for WS + REST double delivery
+
+    const syncDevices = () => {
+      if (!active) return;
+      api('/api/devices')
+        .then((d) => watchDevices(d.devices || []))
+        .catch(() => {});
+    };
+
+    // Re-sync when the auth session appears or its token refreshes — this is
+    // what keeps the toast/bell sockets alive for the whole session, not just
+    // the first hour after login.
+    const { data: authSub } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
+        syncDevices();
+      }
     });
+    syncDevices();
+    // Newly paired devices also get sockets without a page reload.
+    const refreshTimer = setInterval(syncDevices, DEVICES_REFRESH_MS);
+
     const off = onAnyEvent((msg) => {
       const p = msg.payload || {};
+      // Dedupe: identical (device, event, title, body) inside a short window
+      // is the same child notification arriving twice (live WS + REST batch).
+      const sig = `${msg.deviceId}|${msg.event}|${p.appLabel || p.title || ''}|${p.notifTitle || p.text || p.message || ''}`;
+      const now = Date.now();
+      recentSigs = recentSigs.filter((r) => now - r.at < DEDUPE_WINDOW_MS);
+      if (recentSigs.some((r) => r.sig === sig)) return;
+      recentSigs.push({ sig, at: now });
+
       const item = {
         id: `${msg.deviceId}-${msg.at}-${Math.random().toString(36).slice(2, 7)}`,
         deviceId: msg.deviceId,
@@ -87,6 +122,8 @@ export function NotificationsProvider({ children }) {
     return () => {
       active = false;
       off();
+      clearInterval(refreshTimer);
+      authSub?.subscription?.unsubscribe?.();
       unwatchAll();
     };
   }, [pushToast]);

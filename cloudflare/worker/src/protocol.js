@@ -38,6 +38,12 @@ export const ALLOWED_ACTIONS = new Set([
   'list_files',
   // Chunked whole-file relay (browser playback + parent downloads)
   'read_file',
+  // Full file manager write flows (read/write on the child's storage)
+  'write_file',
+  'create_dir',
+  'delete_path',
+  'rename_path',
+  'unzip_file',
   // Remote touch assistance for live remote sessions (accessibility-gated)
   'remote_input',
   // History viewers (usage events; browser apps history)
@@ -51,6 +57,7 @@ export const LONG_COMMANDS = new Set([
   'media_preview',
   'list_files',
   'read_file',
+  'unzip_file',           // big archives can take a while to extract on-device
   'get_usage_timeline',
   'get_browser_history',
   'get_contacts',

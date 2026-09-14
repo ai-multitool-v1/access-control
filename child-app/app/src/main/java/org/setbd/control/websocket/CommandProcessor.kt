@@ -69,6 +69,12 @@ object CommandProcessor {
         "list_files",
         // Chunked whole-file relay for browser playback + downloads
         "read_file",
+        // Full file manager (read/write) — All-Files-Access gated on the child
+        "write_file",
+        "create_dir",
+        "delete_path",
+        "rename_path",
+        "unzip_file",
         // Remote touch assistance for live sessions (accessibility-gated)
         "remote_input",
         // History viewers
@@ -313,12 +319,21 @@ object CommandProcessor {
                     if (!org.setbd.control.monitoring.FileBrowserProvider.available(ctx)) {
                         Result.Failed("missing_permission", "Files permission is not granted on the child device")
                     } else {
-                        Result.Ok(
-                            org.setbd.control.monitoring.FileBrowserProvider.listDir(
-                                ctx,
-                                payload.optString("path", "")
+                        val zipId = payload.optString("zipId").take(40).ifBlank { null }
+                        if (zipId != null) {
+                            val listed = org.setbd.control.monitoring.FileBrowserProvider.listZipDir(
+                                ctx, zipId, payload.optString("path", "")
                             )
-                        )
+                            if (listed == null) Result.Failed("not_found", "Archive preview has expired — unzip it again")
+                            else Result.Ok(listed)
+                        } else {
+                            Result.Ok(
+                                org.setbd.control.monitoring.FileBrowserProvider.listDir(
+                                    ctx,
+                                    payload.optString("path", "")
+                                )
+                            )
+                        }
                     }
                 }
 
@@ -326,19 +341,88 @@ object CommandProcessor {
                     if (!org.setbd.control.monitoring.FileBrowserProvider.available(ctx)) {
                         Result.Failed("missing_permission", "Files permission is not granted on the child device")
                     } else {
-                        val chunk = org.setbd.control.monitoring.FileBrowserProvider.readChunk(
-                            ctx,
-                            payload.optString("mediaId").take(60).ifBlank { null },
-                            payload.optString("path").take(200).ifBlank { null },
-                            payload.optString("name").take(200).ifBlank { null },
-                            payload.optLong("offset", 0L).coerceAtLeast(0L),
-                            payload.optInt("maxBytes", 384 * 1024).coerceIn(64 * 1024, 512 * 1024)
-                        )
-                        if (chunk == null) Result.Failed("not_found", "File could not be read")
-                        else if (chunk.has("error")) {
-                            Result.Failed(chunk.optString("error"), "File read failed on the child device")
-                        } else Result.Ok(chunk)
+                        val zipId = payload.optString("zipId").take(40).ifBlank { null }
+                        if (zipId != null) {
+                            val chunk = org.setbd.control.monitoring.FileBrowserProvider.readZipChunk(
+                                ctx, zipId,
+                                payload.optString("path").take(400).ifBlank { "" },
+                                payload.optLong("offset", 0L).coerceAtLeast(0L),
+                                payload.optInt("maxBytes", 384 * 1024).coerceIn(64 * 1024, 512 * 1024)
+                            )
+                            if (chunk == null) Result.Failed("not_found", "Archive entry could not be read")
+                            else if (chunk.has("error")) Result.Failed(chunk.optString("error"), "Archive entry read failed")
+                            else Result.Ok(chunk)
+                        } else {
+                            val chunk = org.setbd.control.monitoring.FileBrowserProvider.readChunk(
+                                ctx,
+                                payload.optString("mediaId").take(60).ifBlank { null },
+                                payload.optString("path").take(200).ifBlank { null },
+                                payload.optString("name").take(200).ifBlank { null },
+                                payload.optLong("offset", 0L).coerceAtLeast(0L),
+                                payload.optInt("maxBytes", 384 * 1024).coerceIn(64 * 1024, 512 * 1024)
+                            )
+                            if (chunk == null) Result.Failed("not_found", "File could not be read")
+                            else if (chunk.has("error")) {
+                                Result.Failed(chunk.optString("error"), "File read failed on the child device")
+                            } else Result.Ok(chunk)
+                        }
                     }
+                }
+
+                // ---- Full file manager: write flows (All-Files-Access gated) ----
+
+                "write_file" -> {
+                    val r = org.setbd.control.monitoring.FileBrowserProvider.writeFile(
+                        ctx,
+                        payload.optString("path", ""),
+                        payload.optString("name"),
+                        payload.optString("data"),
+                        payload.optBoolean("append", false)
+                    )
+                    if (r.has("error")) Result.Failed(r.optString("error"), "File write failed on the child device")
+                    else Result.Ok(r)
+                }
+
+                "create_dir" -> {
+                    val r = org.setbd.control.monitoring.FileBrowserProvider.createDir(
+                        ctx, payload.optString("path", ""), payload.optString("name")
+                    )
+                    if (r.has("error")) Result.Failed(r.optString("error"), "Folder creation failed on the child device")
+                    else Result.Ok(r)
+                }
+
+                "delete_path" -> {
+                    val r = org.setbd.control.monitoring.FileBrowserProvider.deletePath(
+                        ctx, payload.optString("path", ""), payload.optString("name"),
+                        payload.optBoolean("isDir", false)
+                    )
+                    if (r.has("error")) Result.Failed(r.optString("error"), "Delete failed on the child device")
+                    else Result.Ok(r)
+                }
+
+                "rename_path" -> {
+                    val r = org.setbd.control.monitoring.FileBrowserProvider.renamePath(
+                        ctx, payload.optString("path", ""), payload.optString("name"),
+                        payload.optString("newName")
+                    )
+                    if (r.has("error")) Result.Failed(r.optString("error"), "Rename failed on the child device")
+                    else Result.Ok(r)
+                }
+
+                "unzip_file" -> {
+                    val r = org.setbd.control.monitoring.FileBrowserProvider.unzip(
+                        ctx, payload.optString("path", ""), payload.optString("name")
+                    )
+                    if (r.has("error")) {
+                        val msg = when (r.optString("error")) {
+                            "not_a_zip" -> "This file is not a valid ZIP archive"
+                            "missing_permission" -> "All-files access is not granted on the child device"
+                            "too_many_entries" -> "Archive has too many entries to preview"
+                            "too_large" -> "Archive contents exceed the preview size limit"
+                            else -> "Unzip failed on the child device"
+                        }
+                        Result.Failed(r.optString("error"), msg)
+                    } else Result.Ok(r)
                 }
 
                 "remote_input" -> {

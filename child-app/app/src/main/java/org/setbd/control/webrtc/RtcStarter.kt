@@ -33,11 +33,17 @@ object ScreenGrantHolder {
     @Volatile var resultCode: Int = 0
         private set
 
+    /** When the child last tapped/confirmed "Start now" — guards the init window. */
+    @Volatile
+    var lastConfirmAt: Long = 0L
+        private set
+
     val available: Boolean get() = data != null
 
     fun store(code: Int, intent: Intent) {
         resultCode = code
         data = intent
+        lastConfirmAt = System.currentTimeMillis()
     }
 
     fun peek(): Pair<Int, Intent>? {
@@ -67,6 +73,19 @@ object RtcStarter {
         if (WebRtcCore.isLive(WebRtcCore.KIND_SCREEN)) {
             return JSONObject().put("alreadyLive", true)
         }
+        // The child JUST confirmed "Start now" and the capture pipeline is
+        // still initializing (FGS start + PeerConnection setup take a couple
+        // of seconds). A parent retry inside this window used to clear the
+        // fresh grant and re-open the system dialog — the child saw the cast
+        // permission pop up AGAIN right after tapping "Start now". Report the
+        // start as in-flight instead of prompting a second time.
+        val sinceConfirm = System.currentTimeMillis() - ScreenGrantHolder.lastConfirmAt
+        if (ScreenGrantHolder.lastConfirmAt > 0L && sinceConfirm < 25_000L) {
+            return JSONObject()
+                .put("starting", true)
+                .put("silent", true)
+                .put("justConfirmed", true)
+        }
         // Reuse the stored consent grant — no repeated allow prompts, no crash
         // loop from stacked consent dialogs. Android 14+ (API 34) projection
         // consents are SINGLE-USE by the OS, so from SDK 34 on we always ask
@@ -90,8 +109,9 @@ object RtcStarter {
             // A dialog that was launched moments ago is still up (or being
             // auto-confirmed) — re-launching stacks two system dialogs and
             // Android cancels BOTH, which looked like "cast permission pops
-            // up and then goes away". Just report the prompt as in flight.
-            if (System.currentTimeMillis() - MirrorConsentActivity.lastDialogLaunchAt < 15_000L) {
+            // up and then goes away". The window covers the DO's 15 s command
+            // timeout plus a human retry: within it we never stack a dialog.
+            if (System.currentTimeMillis() - MirrorConsentActivity.lastDialogLaunchAt < 45_000L) {
                 return JSONObject()
                     .put("starting", true)
                     .put("silent", true)

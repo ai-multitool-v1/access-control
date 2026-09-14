@@ -73,6 +73,16 @@ jobs:
           path: child-app/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
+      # Source protection: the distributed APK is R8-obfuscated (class/method
+      # names flattened). This mapping is the ONLY way to de-obfuscate crash
+      # stack traces — archive it together with every APK artifact.
+      - name: Upload R8 mapping (retrace key)
+        uses: actions/upload-artifact@v4
+        with:
+          name: AccessControl-child-mapping
+          path: child-app/app/build/outputs/mapping/debug/mapping.txt
+          if-no-files-found: warn
+
       - name: Attach APK to GitHub Release (child-v* tags)
         if: startsWith(github.ref, 'refs/tags/child-v')
         uses: softprops/action-gh-release@v2

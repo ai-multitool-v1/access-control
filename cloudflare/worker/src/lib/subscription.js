@@ -88,6 +88,11 @@ export const PRO_ONLY_ACTIONS = new Set([
   'remote_input',          // remote touch (remote sessions)
   'list_files',            // file manager
   'read_file',             // file read (and any write flows on top of it)
+  'write_file',            // file create / edit / upload to the child
+  'create_dir',            // file manager folder creation
+  'delete_path',           // file manager delete
+  'rename_path',           // file manager rename
+  'unzip_file',            // ZIP unzip + preview
   'media_preview',         // audio/video player + photo previews
   'sync_media',
 ]);
