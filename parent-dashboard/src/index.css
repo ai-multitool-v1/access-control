@@ -106,6 +106,28 @@ body {
   background: rgba(0, 255, 200, 0.3);
 }
 
+/* Horizontal tab strips that can NEVER clip: they scroll, snap and hide
+   their scrollbar while staying reachable by touch + wheel + keyboard. */
+.tab-strip {
+  display: flex;
+  gap: 0.25rem;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+  min-width: 0;
+  max-width: 100%;
+}
+.tab-strip::-webkit-scrollbar { display: none; }
+.tab-strip > * { flex: none; scroll-snap-align: start; white-space: nowrap; }
+.tab-strip > button:first-child { margin-left: 2px; }
+
+/* Safe-area awareness for fixed bars on notched phones */
+@supports (padding: env(safe-area-inset-bottom)) {
+  .pb-safe { padding-bottom: calc(0.5rem + env(safe-area-inset-bottom)); }
+}
+
 @layer components {
   /* cyber-neo-brutalism: hard 2px borders, offset solid shadows, sharp corners */
   .spatial-card {

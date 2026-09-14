@@ -20,6 +20,9 @@
 #   ADMIN_EMAIL                   Admin login e-mail (extra verification layer)
 #   ADMIN_TOTP_SECRET             Base32 TOTP secret — 2FA step (Google Authenticator)
 #                                 (the console answers 503 until this is set)
+#   VAPID_PUBLIC_KEY              Web Push application server key (scripts/gen-vapid-keys.mjs)
+#   VAPID_PRIVATE_KEY             Web Push private scalar — parent browser push
+#   VAPID_SUBJECT                 (optional) mailto: contact for push services
 #
 # REQUIRED SECRETS (Pages / parent dashboard):
 #   VITE_SUPABASE_URL             Same value as SUPABASE_URL
@@ -51,9 +54,26 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  tests:
+    name: Unit tests (crypto + gating + admin)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Run test suites
+        run: |
+          node scripts/test-totp.mjs
+          node scripts/test-admin-mfa-flow.mjs
+          node scripts/test-premium-gating.mjs
+          node scripts/test-webpush.mjs
+          node scripts/test-admin-tier.mjs
+
   worker:
     name: Worker + Durable Objects
     runs-on: ubuntu-latest
+    needs: tests
     env:
       HAS_CREDS: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
     steps:
@@ -64,7 +84,7 @@ jobs:
           echo "Add repository secrets (Settings → Secrets and variables → Actions):"
           echo "  CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, SUPABASE_URL,"
           echo "  SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY"
-          echo "(optional: TELEGRAM_BOT_TOKEN, OWNER_TELEGRAM_CHAT_ID, FCM_SERVICE_ACCOUNT_JSON, ADMIN_PASSWORD, ADMIN_EMAIL, ADMIN_TOTP_SECRET)"
+          echo "(optional: TELEGRAM_BOT_TOKEN, OWNER_TELEGRAM_CHAT_ID, FCM_SERVICE_ACCOUNT_JSON, ADMIN_PASSWORD, ADMIN_EMAIL, ADMIN_TOTP_SECRET, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT)"
 
       - uses: actions/checkout@v4
         if: env.HAS_CREDS == 'true'
@@ -111,6 +131,9 @@ jobs:
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
           ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
           ADMIN_TOTP_SECRET: ${{ secrets.ADMIN_TOTP_SECRET }}
+          VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+          VAPID_SUBJECT: ${{ secrets.VAPID_SUBJECT }}
         run: |
           put_secret() {
             local name="$1" value="$2"
@@ -129,6 +152,9 @@ jobs:
           put_secret ADMIN_PASSWORD "$ADMIN_PASSWORD"
           put_secret ADMIN_EMAIL "$ADMIN_EMAIL"
           put_secret ADMIN_TOTP_SECRET "$ADMIN_TOTP_SECRET"
+          put_secret VAPID_PUBLIC_KEY "$VAPID_PUBLIC_KEY"
+          put_secret VAPID_PRIVATE_KEY "$VAPID_PRIVATE_KEY"
+          put_secret VAPID_SUBJECT "$VAPID_SUBJECT"
 
   pages:
     name: Parent Dashboard → Cloudflare Pages

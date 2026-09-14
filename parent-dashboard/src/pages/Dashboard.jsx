@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BatteryCharging, Plug, Wifi, WifiOff, Plus, ShieldAlert } from 'lucide-react';
 import { api } from '../services/api.js';
 import { PageHeader, SpatialCard, StatusDot, Stat, Loading, EmptyState, ErrorBanner, FeedTimeline, fmtTime, DeviceQuickLinks } from '../components/ui.jsx';
+import { revealChildren } from '../lib/anim.js';
 
 export default function Dashboard() {
   const [devices, setDevices] = useState(null);
@@ -32,6 +33,14 @@ export default function Dashboard() {
 
   useEffect(() => { load(); }, []);
 
+  // GSAP staggered reveal for stats + device cards.
+  const gridRef = useRef(null);
+  useEffect(() => {
+    if (!devices) return;
+    const t = revealChildren(gridRef.current, { y: 20 });
+    return () => t && t.kill();
+  }, [devices]);
+
   const online = (devices || []).filter((d) => d.status === 'online').length;
 
   return (
@@ -45,7 +54,7 @@ export default function Dashboard() {
       {!devices ? (
         <Loading />
       ) : (
-        <>
+        <div ref={gridRef}>
           <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
             <Stat label="Devices" value={devices.length} sub="paired" />
             <Stat label="Online now" value={online} sub="connected" accent={online > 0 ? 'text-neon' : 'text-slate-500'} />
@@ -108,7 +117,7 @@ export default function Dashboard() {
               <FeedTimeline events={events} emptyText="No events yet." />
             </SpatialCard>
           )}
-        </>
+        </div>
       )}
     </div>
   );

@@ -1,8 +1,10 @@
 // Event notifications: gate by per-parent notification_settings, then send
-// via Telegram (server-side). FCM is used for direct device pushes.
+// via Telegram (server-side) AND the parent's browser Web Push (PWA).
+// FCM remains the direct CHILD-device channel (wake / child-side alerts).
 
 import { sendTelegramTo } from './telegram.js';
 import { sendPush } from './fcm.js';
+import { pushToParent } from '../api/notifications.js';
 import { sbSingle, sbRest } from '../lib/supabase.js';
 
 async function gateEnabled(env, parentId, key) {
@@ -29,17 +31,34 @@ export async function notifyDeviceEvent(env, parentId, deviceId, kind) {
   if (!key) return { ok: false };
   if (!(await gateEnabled(env, parentId, key))) return { ok: false, gated: true };
   const name = await deviceName(env, deviceId);
+  const title = kind === 'connect' ? 'Device connected' : 'Device offline';
   const text = kind === 'connect'
     ? `🟢 <b>Access Control</b>\n<b>${escapeHtml(name)}</b> is now connected.`
     : `🔴 <b>Access Control</b>\n<b>${escapeHtml(name)}</b> went offline.`;
-  return sendTelegramTo(env, parentId, text);
+  const [tg] = await Promise.all([
+    sendTelegramTo(env, parentId, text),
+    pushToParent(env, parentId, {
+      title: `Access Control — ${title}`,
+      body: `${name} is ${kind === 'connect' ? 'now online' : 'offline'}.`,
+      data: { type: kind },
+    }).catch(() => ({})),
+  ]);
+  return tg;
 }
 
 export async function notifyPolicyChanged(env, parentId, deviceId, policyType) {
   if (!(await gateEnabled(env, parentId, 'on_policy_change'))) return { ok: false, gated: true };
   const name = await deviceName(env, deviceId);
   const text = `🛡 <b>Access Control</b>\nPolicy updated on <b>${escapeHtml(name)}</b>: ${escapeHtml(policyType)}`;
-  return sendTelegramTo(env, parentId, text);
+  const [tg] = await Promise.all([
+    sendTelegramTo(env, parentId, text),
+    pushToParent(env, parentId, {
+      title: 'Access Control — policy updated',
+      body: `${name}: ${policyType}`,
+      data: { type: 'policy_change' },
+    }).catch(() => ({})),
+  ]);
+  return tg;
 }
 
 export async function pushWake(env, deviceId) {
@@ -57,7 +76,8 @@ export async function pushWake(env, deviceId) {
   }
 }
 
-// Critical events (SOS, safe-zone exit, ...) always try Telegram + FCM.
+// Critical events (SOS, safe-zone exit, ...) always try Telegram + FCM(child)
+// + Web Push (parent browser).
 export async function notifyCriticalEvent(env, parentId, deviceId, type, title) {
   const name = await deviceName(env, deviceId);
   const label = type === 'zone_exit' ? 'SAFE ZONE EXIT' : type === 'sos' ? 'SOS ALERT' : 'ALERT';
@@ -74,6 +94,11 @@ export async function notifyCriticalEvent(env, parentId, deviceId, type, title) 
       }));
     }
   } catch { /* best effort */ }
+  results.push(await pushToParent(env, parentId, {
+    title: `Access Control — ${label}`,
+    body: `${name}: ${title}`,
+    data: { severity: 'critical', eventType: type },
+  }).catch(() => ({})));
   return { ok: true, results };
 }
 

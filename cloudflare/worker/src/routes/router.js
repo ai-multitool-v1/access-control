@@ -13,7 +13,8 @@ import {
 } from '../api/policies.js';
 import { getUsage, pushUsage } from '../api/usage.js';
 import { getLocations, pushLocation } from '../api/location.js';
-import { getNotificationSettings, saveNotificationSettings, sendTestPush } from '../api/notifications.js';
+import { getNotificationSettings, saveNotificationSettings, sendTestPush,
+  getWebPushKey, saveWebPushSubscription, deleteWebPushSubscription, sendTestWebPush } from '../api/notifications.js';
 import { getTelegramSettings, saveTelegramSettings, testTelegram } from '../api/telegram.js';
 import { pushHardware, getHardware } from '../api/hardware.js';
 import { pushMedia, getMedia, deleteMedia } from '../api/media.js';
@@ -23,7 +24,7 @@ import { handleCaptchaNew, handleCaptchaVerify } from '../api/captcha.js';
 import {
   handleAdminLogin, handleAdminMfa, handleAdminConfig, handleAdminUsers,
   handleAdminRemoveUser, handleAdminBan, handleAdminUnban, handleAdminSecurity, requireAdmin,
-  handleAdminAnnouncements, handleAdminAnnouncementToggle, handleAdminAnnouncementDelete,
+  handleAdminUserTier, handleAdminAnnouncements, handleAdminAnnouncementToggle, handleAdminAnnouncementDelete,
   handleAdminPayments, handleAdminPaymentImage, handleAdminPaymentDecision, handleAdminDevices,
 } from '../api/admin.js';
 import { handlePaymentSubmit, handleMyPayments, handleAnnouncements } from '../api/payments.js';
@@ -97,6 +98,9 @@ export async function handleApi(request, env) {
     }
     if (p === '/api/admin/users/unban' && method === 'POST') {
       return handleAdminUnban(request, env);
+    }
+    if (p === '/api/admin/users/tier' && method === 'POST') {
+      return handleAdminUserTier(request, env);
     }
     if (p === '/api/admin/security' && method === 'GET') {
       return handleAdminSecurity(env);
@@ -309,6 +313,22 @@ export async function handleApi(request, env) {
   if (p === '/api/notifications/test' && method === 'POST') {
     const parent = await requireParent(request, env);
     return sendTestPush(request, env, parent);
+  }
+  // ---- parent browser push (Web Push / VAPID) ----
+  if (p === '/api/notifications/push-key' && method === 'GET') {
+    return getWebPushKey(env);
+  }
+  if (p === '/api/notifications/push-subscription' && method === 'POST') {
+    const parent = await requireParent(request, env);
+    return saveWebPushSubscription(request, env, parent);
+  }
+  if (p === '/api/notifications/push-subscription' && method === 'DELETE') {
+    const parent = await requireParent(request, env);
+    return deleteWebPushSubscription(request, env, parent);
+  }
+  if (p === '/api/notifications/push-test' && method === 'POST') {
+    const parent = await requireParent(request, env);
+    return sendTestWebPush(env, parent);
   }
   if (p === '/api/telegram/settings' && (method === 'GET' || method === 'POST')) {
     const parent = await requireParent(request, env);

@@ -3,12 +3,16 @@
 // AdminApp.jsx to keep each file readable; they render inside the same
 // admin shell and use the same 8-hour admin token.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Megaphone, RefreshCw, Ban as BanIcon, Trash2, Check, X, Eye, Smartphone,
-  Cpu, BadgeCheck, Clock, XCircle, Loader2, ImageIcon, Link2,
+  Cpu, BadgeCheck, Clock, XCircle, Loader2, ImageIcon, Link2, Search,
+  BatteryCharging, Signal, Mail,
 } from 'lucide-react';
 import { API_BASE } from '../lib/config.js';
+import { useDialogs } from '../components/Dialog.jsx';
+import { modalIn, backdropIn, revealChildren } from '../lib/anim.js';
+import HardwareList, { label as hwLabel } from './HardwareList.jsx';
 
 async function adminApi(token, path, opts = {}) {
   const res = await fetch(`${API_BASE}${path}`, {
@@ -44,6 +48,7 @@ export function BroadcastTab({ token, onSessionExpired }) {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
+  const dialog = useDialogs();
 
   const load = async () => {
     setError('');
@@ -89,7 +94,13 @@ export function BroadcastTab({ token, onSessionExpired }) {
     } catch (e) { setError(e.message); }
   }
   async function remove(a) {
-    if (!window.confirm(`Delete this ${a.type} permanently?`)) return;
+    const ok = await dialog.confirm({
+      title: `Delete this ${a.type}?`,
+      body: 'It disappears from every parent dashboard within a minute. This cannot be undone.',
+      confirmText: 'Delete',
+      tone: 'danger',
+    });
+    if (!ok) return;
     try {
       await adminApi(token, '/api/admin/announcements/delete', {
         method: 'POST', body: JSON.stringify({ id: a.id }),
@@ -190,6 +201,7 @@ export function PaymentsTab({ token, onSessionExpired }) {
   const [busyId, setBusyId] = useState(null);
   const [shot, setShot] = useState({}); // requestId -> objectURL
   const [zoom, setZoom] = useState(null);
+  const dialog = useDialogs();
 
   const load = async () => {
     setError('');
@@ -219,10 +231,24 @@ export function PaymentsTab({ token, onSessionExpired }) {
   async function decide(r, decision) {
     let note = null;
     if (decision === 'reject') {
-      note = window.prompt(`Reason for rejecting ${r.email}'s ${r.plan} request? (sent to the parent's Telegram)`, '') || '';
-      if (!window.confirm(`Reject ${r.plan} · ${r.amount_bdt} BDT from ${r.email}?`)) return;
+      note = await dialog.prompt({
+        title: `Reject ${r.plan} · ${r.amount_bdt} BDT?`,
+        body: `Parent: ${r.email}. The reason below is sent to their Telegram.`,
+        label: 'Rejection reason (sent to the parent)',
+        placeholder: 'e.g. transaction not found — check the TX id and resubmit',
+        confirmText: 'Reject request',
+        tone: 'danger',
+        required: false,
+      });
+      if (note === null) return;
     } else {
-      if (!window.confirm(`APPROVE ${r.plan.toUpperCase()} for ${r.email}?\n\n${r.plan === 'lifetime' ? 'Lifetime access' : 'Timer starts now'}. This cannot be undone here.`)) return;
+      const ok = await dialog.confirm({
+        title: `APPROVE ${String(r.plan).toUpperCase()} for ${r.email}?`,
+        body: `${r.plan === 'lifetime' ? 'Lifetime access — never expires.' : 'The timer starts the moment you approve.'}\nAmount: ${r.amount_bdt} BDT via ${String(r.method).toUpperCase()}.\nThe parent is notified on Telegram. This cannot be undone here.`,
+        confirmText: `Grant ${r.plan}`,
+        tone: 'pro',
+      });
+      if (!ok) return;
     }
     setBusyId(r.id); setError('');
     try {
@@ -305,6 +331,9 @@ export function DevicesTab({ token, onSessionExpired }) {
   const [error, setError] = useState('');
   const [detail, setDetail] = useState(null);
   const [detailBusy, setDetailBusy] = useState(false);
+  const [parentFilter, setParentFilter] = useState('all');
+  const [query, setQuery] = useState('');
+  const listRef = useRef(null);
 
   const load = async () => {
     setError('');
@@ -317,6 +346,29 @@ export function DevicesTab({ token, onSessionExpired }) {
     }
   };
   useEffect(() => { load(); /* eslint-disable-line */ }, []);
+  useEffect(() => {
+    revealChildren(listRef.current, { selector: '[data-dev-row]', y: 14 });
+  }, [rows, parentFilter, query]);
+
+  // Unique parents for the "down-drill by parent" filter.
+  const parents = useMemo(() => {
+    const map = new Map();
+    for (const d of rows || []) {
+      if (!map.has(d.parentId)) map.set(d.parentId, d.parentEmail || d.parentName || d.parentId.slice(0, 8));
+    }
+    return Array.from(map, ([id, label]) => ({ id, label }));
+  }, [rows]);
+
+  const filtered = useMemo(() => {
+    let list = rows || [];
+    if (parentFilter !== 'all') list = list.filter((d) => d.parentId === parentFilter);
+    const q = query.trim().toLowerCase();
+    if (q) {
+      list = list.filter((d) =>
+        [d.name, d.model, d.brand, d.parentEmail, d.parentId].some((v) => String(v || '').toLowerCase().includes(q)));
+    }
+    return list;
+  }, [rows, parentFilter, query]);
 
   async function openDetail(id) {
     setDetailBusy(true); setError('');
@@ -328,7 +380,7 @@ export function DevicesTab({ token, onSessionExpired }) {
 
   return (
     <div>
-      <div className="mb-3 flex items-center justify-between">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h3 className="font-mono text-[11px] font-black uppercase tracking-[0.2em] text-neon-dim">
           Connected child devices {rows ? `(${rows.length})` : ''}
         </h3>
@@ -336,13 +388,31 @@ export function DevicesTab({ token, onSessionExpired }) {
           <RefreshCw className="h-3 w-3" /> refresh
         </button>
       </div>
+
+      {/* filters: down-drill by parent + free-text search */}
+      <div className="mb-3 flex flex-wrap gap-2">
+        <div className="relative min-w-[220px] flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+          <input className="input-field pl-9" placeholder="Search device / model / parent email"
+            value={query} onChange={(e) => setQuery(e.target.value)} />
+        </div>
+        <select className="input-field w-full sm:w-72" value={parentFilter} onChange={(e) => setParentFilter(e.target.value)}
+          title="Down-drill: show only this parent's devices">
+          <option value="all">All parents ({parents.length})</option>
+          {parents.map((p) => (
+            <option key={p.id} value={p.id}>{p.label}</option>
+          ))}
+        </select>
+      </div>
+
       {error && <p className="mb-3 border-2 border-hazard/60 bg-hazard/10 px-3 py-2 font-mono text-xs text-red-300">{error}</p>}
-      {!rows ? <p className="font-mono text-xs text-slate-500">Loading…</p> : rows.length === 0 ? (
-        <p className="font-mono text-xs text-slate-500">No child devices bound yet.</p>
-      ) : (
-        <div className="space-y-2">
-          {rows.map((d) => (
-            <div key={d.id} className="flex flex-wrap items-center gap-3 border-2 border-space-600 bg-space-800/40 p-3">
+      {!rows ? <p className="font-mono text-xs text-slate-500">Loading…</p> : (
+        <div ref={listRef} className="space-y-2">
+          {filtered.length === 0 && (
+            <p className="font-mono text-xs text-slate-500">No devices match this filter.</p>
+          )}
+          {filtered.map((d) => (
+            <div key={d.id} data-dev-row className="flex flex-wrap items-center gap-3 border-2 border-space-600 bg-space-800/40 p-3">
               <Smartphone className={`h-5 w-5 flex-none ${d.status === 'online' ? 'text-emerald-300' : 'text-slate-500'}`} />
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2 text-xs text-white">
@@ -352,14 +422,29 @@ export function DevicesTab({ token, onSessionExpired }) {
                   <span className={`border px-1.5 py-0.5 font-mono text-[9px] uppercase ${d.status === 'online' ? 'border-emerald-400 text-emerald-300' : 'border-slate-600 text-slate-400'}`}>{d.status}</span>
                 </div>
                 <div className="mt-0.5 flex flex-wrap gap-x-4 gap-y-0.5 font-mono text-[10px] text-slate-500">
-                  <span>parent: {d.parentEmail || d.parentId}</span>
+                  <span className="inline-flex items-center gap-1"><Mail className="h-3 w-3" /> {d.parentEmail || d.parentId}</span>
                   <span>uid {String(d.parentId).slice(0, 8)}…</span>
-                  {d.battery != null && <span>🔋 {d.battery}%{d.charging ? ' ⚡' : ''}</span>}
+                  {d.battery != null && (
+                    <span className="inline-flex items-center gap-1">
+                      <BatteryCharging className={`h-3 w-3 ${d.charging ? 'text-emerald-300' : 'text-slate-500'}`} /> {d.battery}%
+                    </span>
+                  )}
+                  {d.network && <span className="inline-flex items-center gap-1"><Signal className="h-3 w-3" /> {d.network}</span>}
                   {d.lastSeenAt && <span>seen {new Date(d.lastSeenAt).toLocaleString()}</span>}
                 </div>
+                {/* hardware summary as a readable chip row (no JSON anywhere) */}
+                {d.hasHardware && (
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    {Object.entries(d.hardwareSummary || {}).slice(0, 6).map(([k, v]) => (
+                      <span key={k} className="border border-space-600 bg-space-900/60 px-1.5 py-0.5 font-mono text-[9px] text-slate-400">
+                        {hwLabel(k)}: <b className="text-slate-200">{String(v)}</b>
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
               <button onClick={() => openDetail(d.id)} disabled={detailBusy}
-                className="flex flex-none items-center gap-1 border-2 border-space-600 px-2 py-1.5 font-mono text-[10px] uppercase text-slate-300 hover:text-white">
+                className="flex flex-none items-center gap-1 border-2 border-space-600 px-2 py-1.5 font-mono text-[10px] uppercase text-slate-300 hover:border-neon hover:text-neon">
                 <Cpu className="h-3.5 w-3.5" /> hardware
               </button>
             </div>
@@ -368,22 +453,46 @@ export function DevicesTab({ token, onSessionExpired }) {
       )}
 
       {detail && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4" onClick={() => setDetail(null)}>
-          <div className="max-h-[85vh] w-full max-w-xl overflow-y-auto border-2 border-space-600 bg-space-900 p-5" onClick={(e) => e.stopPropagation()}>
-            <h4 className="mb-3 font-mono text-sm font-black uppercase tracking-widest text-white">
-              {detail.name} — full hardware report
-            </h4>
-            {detail.hardware ? (
-              <pre className="whitespace-pre-wrap break-all font-mono text-[10px] leading-relaxed text-slate-300">
-                {JSON.stringify(detail.hardware, null, 2)}
-              </pre>
-            ) : (
-              <p className="font-mono text-xs text-slate-500">No hardware report posted yet by this device.</p>
-            )}
-            <button className="btn-primary mt-4 w-full" onClick={() => setDetail(null)}>Close</button>
-          </div>
-        </div>
+        <DeviceDetailModal device={detail} onClose={() => setDetail(null)} />
       )}
+    </div>
+  );
+}
+
+function DeviceDetailModal({ device: detail, onClose }) {
+  const cardRef = useRef(null);
+  const backRef = useRef(null);
+  useEffect(() => {
+    const b = backdropIn(backRef.current);
+    const m = modalIn(cardRef.current);
+    return () => { b(); m(); };
+  }, []);
+
+  return (
+    <div ref={backRef} className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div ref={cardRef} className="max-h-[88vh] w-full max-w-2xl overflow-y-auto border-2 border-space-600 bg-space-900 shadow-brutal-lg">
+        <div className="sticky top-0 z-10 flex items-center gap-3 border-b-2 border-space-600 bg-space-800 px-4 py-3">
+          <Smartphone className={`h-5 w-5 flex-none ${detail.status === 'online' ? 'text-emerald-300' : 'text-slate-500'}`} />
+          <div className="min-w-0 flex-1">
+            <h4 className="truncate font-mono text-sm font-black uppercase tracking-widest text-white">
+              {detail.name} — hardware report
+            </h4>
+            <p className="font-mono text-[9px] uppercase tracking-wider text-slate-500">
+              {[detail.brand, detail.model, detail.androidVersion && `Android ${detail.androidVersion}`].filter(Boolean).join(' · ')}
+              {detail.parentEmail ? ` — parent ${detail.parentEmail}` : ''}
+            </p>
+          </div>
+          <button onClick={onClose} className="border-2 border-space-600 p-1 text-slate-400 hover:border-hazard hover:text-red-300" aria-label="Close">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="p-4">
+          <HardwareList hardware={detail.hardware} />
+        </div>
+        <div className="px-4 pb-4">
+          <button className="btn-ghost w-full" onClick={onClose}>Close</button>
+        </div>
+      </div>
     </div>
   );
 }

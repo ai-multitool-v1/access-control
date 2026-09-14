@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Send, Info, X, ExternalLink, ShieldCheck, Bell, Menu, MoreHorizontal, Crown } from 'lucide-react';
+import { Send, Info, X, ExternalLink, ShieldCheck, Bell, LogOut, MoreHorizontal, Crown } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth.jsx';
 import { PREVIEW_MODE } from '../lib/preview.js';
 import { NotificationsProvider, useNotifications } from '../hooks/useNotifications.jsx';
@@ -8,6 +8,7 @@ import { fmtTime } from '../components/ui.jsx';
 import NotifDetailModal from './NotifDetailModal.jsx';
 import AnnouncementHost from './AnnouncementHost.jsx';
 import { usePlan } from '../services/plan.jsx';
+import { pageIn, toastIn } from '../lib/anim.js';
 
 const NAV = [
   { to: '/dashboard', label: 'Dashboard', icon: 'M3 12l9-9 9 9M5 10v10h14V10' },
@@ -71,13 +72,25 @@ function AboutModal({ onClose }) {
 // Clicking a toast opens the FULL parsed notification detail.
 function Toasts() {
   const { toasts, dismissToast, openDetail } = useNotifications();
+  const lastRef = useRef(null);
+  // GSAP slide-in for the newest toast (punchy cubic-bezier settle).
+  useEffect(() => {
+    if (toasts.length === 0) return;
+    const newest = toasts[toasts.length - 1];
+    if (newest && lastRef.current !== newest.id) {
+      lastRef.current = newest.id;
+      const el = document.getElementById(`toast-${newest.id}`);
+      if (el) toastIn(el, true);
+    }
+  }, [toasts]);
   if (toasts.length === 0) return null;
   return (
     <div className="pointer-events-none fixed bottom-20 right-3 z-[70] flex w-[calc(100vw-1.5rem)] max-w-sm flex-col gap-2 lg:bottom-6 lg:right-6">
       {toasts.map((t) => (
         <div
+          id={`toast-${t.id}`}
           key={t.id}
-          className={`pointer-events-auto spatial-card animate-fade-up cursor-pointer p-3 transition hover:border-neon ${t.severity === 'critical' ? 'border-hazard' : ''}`}
+          className={`pointer-events-auto spatial-card cursor-pointer p-3 transition hover:border-neon ${t.severity === 'critical' ? 'border-hazard' : ''}`}
           onClick={() => { openDetail(t); dismissToast(t.id); }}
           title="Open parsed details"
         >
@@ -201,6 +214,12 @@ function LayoutInner() {
   const { detail, closeDetail } = useNotifications();
   const [aboutOpen, setAboutOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const pageRef = useRef(null);
+
+  // GSAP route transition — runs on every tab open/close (location change).
+  useEffect(() => {
+    return pageIn(pageRef.current);
+  }, [location.pathname]);
 
   const doSignOut = async () => {
     await signOut();
@@ -259,23 +278,23 @@ function LayoutInner() {
         </div>
       </aside>
 
-      {/* Mobile top bar */}
-      <div className="fixed inset-x-0 top-0 z-20 flex items-center justify-between border-b-2 border-space-600 bg-space-800/95 px-4 py-3 lg:hidden">
-        <div className="font-mono text-xs font-black uppercase tracking-widest text-white">Access Control</div>
-        <div className="flex items-center gap-2">
+      {/* Mobile top bar — icon-only controls so it never wraps on 320 px */}
+      <div className="fixed inset-x-0 top-0 z-20 flex items-center justify-between gap-2 border-b-2 border-space-600 bg-space-800/95 px-3 py-3 lg:hidden">
+        <div className="min-w-0 font-mono text-[11px] font-black uppercase tracking-widest text-white">Access Control</div>
+        <div className="flex flex-none items-center gap-1.5">
           <PlanChip compact />
           <BellButton />
-          <button onClick={() => setAboutOpen(true)} className="border-2 border-space-600 p-1.5 text-neon">
+          <button onClick={() => setAboutOpen(true)} className="border-2 border-space-600 p-1.5 text-neon" aria-label="About">
             <Info className="h-4 w-4" />
           </button>
-          <button onClick={doSignOut} className="btn-ghost px-3 py-1.5 text-[10px]">
-            Sign out
+          <button onClick={doSignOut} className="border-2 border-space-600 p-1.5 text-slate-300 hover:border-hazard hover:text-red-300" aria-label="Sign out">
+            <LogOut className="h-4 w-4" />
           </button>
         </div>
       </div>
 
       {/* Mobile bottom nav: 4 primary + More drawer (no horizontal overflow) */}
-      <nav className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t-2 border-space-600 bg-space-800/95 py-2 lg:hidden">
+      <nav className="pb-safe fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t-2 border-space-600 bg-space-800/95 py-2 lg:hidden">
         {NAV.filter((n) => PRIMARY.has(n.to)).map((n) => (
           <NavLink
             key={n.to}
@@ -296,9 +315,9 @@ function LayoutInner() {
         </button>
       </nav>
 
-      {/* Content — keyed fade transition on every tab open/close */}
+      {/* Content — GSAP keyed transition on every tab open/close */}
       <main className="min-w-0 flex-1 overflow-x-hidden px-4 pb-28 pt-20 lg:ml-60 lg:px-8 lg:pb-10 lg:pt-8">
-        <div key={location.pathname} className="animate-fade-in">
+        <div ref={pageRef} key={location.pathname}>
           <AnnouncementHost />
           {PREVIEW_MODE && (
             <div className="animate-fade-up mb-4 border-2 border-amber-400/50 bg-amber-400/10 px-4 py-2.5 font-mono text-xs font-bold text-amber-300 shadow-brutal">

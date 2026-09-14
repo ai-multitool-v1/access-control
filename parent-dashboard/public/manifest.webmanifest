@@ -1,0 +1,13 @@
+{
+  "name": "Access Control — Parent Dashboard",
+  "short_name": "Access Control",
+  "description": "Consent-first parental control console — live device events, alerts and push notifications.",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#07090C",
+  "theme_color": "#00FFC8",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

@@ -1,8 +1,89 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { BellRing, BellOff, Loader2, Smartphone } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient.js';
 import { PREVIEW_MODE, PREVIEW_USER } from '../lib/preview.js';
 import { PageHeader, SpatialCard } from '../components/ui.jsx';
+import { pushSupported, pushPermission, enablePush, disablePush, isSubscribed } from '../lib/push.js';
+
+function PushCard() {
+  const [supported, setSupported] = useState(true);
+  const [permission, setPermission] = useState('default');
+  const [subscribed, setSubscribed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState('');
+
+  useEffect(() => {
+    setSupported(pushSupported());
+    if (!pushSupported()) return;
+    pushPermission().then(setPermission);
+    isSubscribed().then(setSubscribed);
+  }, []);
+
+  async function on() {
+    setBusy(true); setNotice('');
+    const r = await enablePush();
+    setBusy(false);
+    if (r.ok) {
+      setSubscribed(true); setPermission('granted');
+      setNotice('Enabled — device alerts now reach this browser even when the tab is closed.');
+    } else if (r.reason === 'denied') {
+      setNotice('Notification permission is blocked. Allow notifications for this site in the browser settings, then try again.');
+    } else if (r.reason === 'server_not_configured') {
+      setNotice('Server push keys are not configured yet (owner: add VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY secrets).');
+    } else if (r.reason === 'unsupported') {
+      setNotice('This browser does not support web push.');
+    } else {
+      setNotice('Could not enable push — try reloading the page.');
+    }
+  }
+
+  async function off() {
+    setBusy(true); setNotice('');
+    await disablePush();
+    setBusy(false);
+    setSubscribed(false);
+    setNotice('Push notifications disabled for this browser.');
+  }
+
+  const stateChip = !supported
+    ? <span className="chip-warn">unsupported</span>
+    : subscribed
+      ? <span className="chip-ok">enabled</span>
+      : permission === 'denied'
+        ? <span className="chip-crit">blocked</span>
+        : <span className="chip-info">off</span>;
+
+  return (
+    <SpatialCard className="p-6">
+      <h3 className="mb-3 flex items-center gap-2 text-lg font-semibold text-white">
+        <Smartphone className="h-5 w-5 text-neon" /> Phone notifications <span className="ml-auto">{stateChip}</span>
+      </h3>
+      <p className="mb-4 text-sm text-slate-400">
+        Get an OS notification on this phone/browser the moment a child device connects, goes offline,
+        raises SOS or leaves a safe zone — even with the dashboard fully closed. Notifications are also
+        mirrored to your Telegram (see the Telegram page).
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {!subscribed ? (
+          <button className="btn-primary" onClick={on} disabled={busy || !supported || permission === 'denied'}>
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <BellRing className="h-4 w-4" />} Enable push notifications
+          </button>
+        ) : (
+          <button className="btn-ghost" onClick={off} disabled={busy}>
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <BellOff className="h-4 w-4" />} Disable on this device
+          </button>
+        )}
+      </div>
+      {notice && <p className="mt-3 border-2 border-neon/50 bg-neon/10 px-3 py-2 font-mono text-[11px] text-neon">{notice}</p>}
+      {permission === 'denied' && (
+        <p className="mt-3 border-2 border-hazard/50 bg-hazard/10 px-3 py-2 font-mono text-[11px] text-red-300">
+          Blocked: tap the lock/site icon in the address bar → Notifications → Allow, then reload.
+        </p>
+      )}
+    </SpatialCard>
+  );
+}
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -33,7 +114,9 @@ export default function Settings() {
           </div>
         </SpatialCard>
 
-        <SpatialCard className="p-6">
+        <PushCard />
+
+        <SpatialCard className="p-6 lg:col-span-2">
           <h3 className="mb-3 text-lg font-semibold text-white">Session</h3>
           <p className="mb-4 text-sm text-slate-400">
             Sign out of this dashboard. Paired devices and policies keep running in the background.

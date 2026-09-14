@@ -5,9 +5,10 @@
 //   notification  → toast stack in the bottom-right corner
 // Mounted once inside <Layout />, polls /api/announcements every 10 minutes.
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Megaphone, X, Bell, Image as ImageIcon } from 'lucide-react';
 import { api } from '../services/api.js';
+import { modalIn, toastIn } from '../lib/anim.js';
 
 const DISMISS_KEY = 'ac_dismissed_announcements';
 const POLL_MS = 10 * 60 * 1000;
@@ -81,54 +82,77 @@ export default function AnnouncementHost() {
       ))}
 
       {/* ---- notification toasts (bottom-right) ---- */}
-      <div className="pointer-events-none fixed bottom-4 right-4 z-50 flex w-80 flex-col gap-2">
-        {toasts.slice(0, 3).map((a) => (
-          <div key={a.id} className="pointer-events-auto spatial-card flex gap-3 p-3 shadow-xl">
-            {a.image_url ? <img src={a.image_url} alt="" className="h-10 w-10 flex-none object-cover" />
-              : <Bell className="h-5 w-5 flex-none text-accent-soft" />}
-            <div className="min-w-0 flex-1">
-              {a.title && <p className="text-xs font-bold text-white">{a.title}</p>}
-              <p className="mt-0.5 line-clamp-3 text-xs text-slate-400">{a.body}</p>
-              {a.link_url && (
-                <button className="mt-1 font-mono text-[10px] uppercase tracking-wider text-accent-soft hover:underline"
-                  onClick={() => openLink(a)}>Open link →</button>
-              )}
-            </div>
-            <button onClick={() => dismiss(a, 'toast')} className="flex-none text-slate-600 hover:text-white" aria-label="Dismiss">
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        ))}
-      </div>
+      <AnnouncementToasts toasts={toasts} dismiss={dismiss} openLink={openLink} />
 
       {/* ---- popup modal (once per announcement) ---- */}
-      {activePopup && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true">
-          <div className="spatial-card relative w-full max-w-md overflow-hidden p-0">
-            {activePopup.image_url && (
-              <img src={activePopup.image_url} alt="" className="max-h-56 w-full object-cover" />
+      {activePopup && <AnnouncementPopup a={activePopup} dismiss={dismiss} openLink={openLink} />}
+    </>
+  );
+}
+
+function AnnouncementToasts({ toasts, dismiss, openLink }) {
+  const seen = useRef(new Set());
+  const stackRef = useRef(null);
+  useEffect(() => {
+    for (const a of toasts) {
+      if (seen.current.has(a.id)) continue;
+      seen.current.add(a.id);
+      const el = document.getElementById(`ann-toast-${a.id}`);
+      if (el) toastIn(el, true);
+    }
+  }, [toasts]);
+  if (toasts.length === 0) return null;
+  return (
+    <div ref={stackRef} className="pointer-events-none fixed bottom-24 right-4 z-50 flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-2">
+      {toasts.slice(0, 3).map((a) => (
+        <div key={a.id} id={`ann-toast-${a.id}`} className="pointer-events-auto spatial-card flex gap-3 p-3 shadow-xl">
+          {a.image_url ? <img src={a.image_url} alt="" className="h-10 w-10 flex-none object-cover" />
+            : <Bell className="h-5 w-5 flex-none text-accent-soft" />}
+          <div className="min-w-0 flex-1">
+            {a.title && <p className="text-xs font-bold text-white">{a.title}</p>}
+            <p className="mt-0.5 line-clamp-3 text-xs text-slate-400">{a.body}</p>
+            {a.link_url && (
+              <button className="mt-1 font-mono text-[10px] uppercase tracking-wider text-accent-soft hover:underline"
+                onClick={() => openLink(a)}>Open link →</button>
             )}
-            <div className="p-5">
-              <div className="flex items-start justify-between gap-3">
-                <h3 className="flex items-center gap-2 text-base font-bold text-white">
-                  <ImageIcon className="h-4 w-4 text-accent-soft" />
-                  {activePopup.title || 'Announcement'}
-                </h3>
-                <button onClick={() => dismiss(activePopup, 'popup')} className="text-slate-500 hover:text-white" aria-label="Close popup">
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-              {activePopup.body && <p className="mt-2 whitespace-pre-line text-sm text-slate-300">{activePopup.body}</p>}
-              <div className="mt-4 flex items-center justify-between gap-3">
-                {activePopup.link_url ? (
-                  <button className="btn-primary" onClick={() => openLink(activePopup)}>Open link</button>
-                ) : <span />}
-                <button className="btn-ghost" onClick={() => dismiss(activePopup, 'popup')}>Got it</button>
-              </div>
-            </div>
+          </div>
+          <button onClick={() => dismiss(a, 'toast')} className="flex-none text-slate-600 hover:text-white" aria-label="Dismiss">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AnnouncementPopup({ a, dismiss, openLink }) {
+  const cardRef = useRef(null);
+  useEffect(() => modalIn(cardRef.current), []);
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true">
+      <div ref={cardRef} className="spatial-card relative w-full max-w-md overflow-hidden p-0">
+        {a.image_url && (
+          <img src={a.image_url} alt="" className="max-h-56 w-full object-cover" />
+        )}
+        <div className="p-5">
+          <div className="flex items-start justify-between gap-3">
+            <h3 className="flex items-center gap-2 text-base font-bold text-white">
+              <ImageIcon className="h-4 w-4 text-accent-soft" />
+              {a.title || 'Announcement'}
+            </h3>
+            <button onClick={() => dismiss(a, 'popup')} className="text-slate-500 hover:text-white" aria-label="Close popup">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          {a.body && <p className="mt-2 whitespace-pre-line text-sm text-slate-300">{a.body}</p>}
+          <div className="mt-4 flex items-center justify-between gap-3">
+            {a.link_url ? (
+              <button className="btn-primary" onClick={() => openLink(a)}>Open link</button>
+            ) : <span />}
+            <button className="btn-ghost" onClick={() => dismiss(a, 'popup')}>Got it</button>
           </div>
         </div>
-      )}
-    </>
+      </div>
+    </div>
   );
 }

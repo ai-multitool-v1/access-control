@@ -27,6 +27,7 @@
 //   POST /api/admin/users/remove     {userId}                   -> deletes auth user (cascades)
 //   POST /api/admin/users/ban        {userId, reason}           -> ban + revoke sessions
 //   POST /api/admin/users/unban      {userId}                   -> lift ban
+//   POST /api/admin/users/tier       {userId, tier}             -> grant/revoke pro (free|monthly|yearly|lifetime)
 //   GET  /api/admin/security                                    -> database/RLS/endpoint security map
 //
 // When ADMIN_PASSWORD is not configured every admin endpoint answers 503 —
@@ -270,15 +271,17 @@ async function listAuthUsers(env) {
 }
 
 export async function handleAdminUsers(env) {
-  const [users, logs, bans, profiles] = await Promise.all([
+  const [users, logs, bans, profiles, subs] = await Promise.all([
     listAuthUsers(env),
     sbRest(env, 'auth_login_logs?select=user_id,email,event,ip,user_agent,fingerprint,created_at&order=created_at.desc&limit=2000').catch(() => []),
     sbRest(env, 'admin_bans?select=user_id,email,reason,active,created_at').catch(() => []),
     sbRest(env, 'profiles?select=id,email,display_name,created_at').catch(() => []),
+    sbRest(env, 'subscriptions?select=parent_id,plan,tier,status,current_period_end').catch(() => []),
   ]);
 
   const banMap = new Map(bans.filter((b) => b.active).map((b) => [b.user_id, b]));
   const profileMap = new Map(profiles.map((p) => [p.id, p]));
+  const subMap = new Map(subs.map((s) => [s.parent_id, s]));
 
   // Aggregate login history per user (all captured logins/registrations).
   const logMap = new Map(); // user_id -> {count, last, rows:[]}
@@ -298,6 +301,19 @@ export async function handleAdminUsers(env) {
     const ban = banMap.get(u.id);
     const log = logMap.get(u.id);
     const profile = profileMap.get(u.id);
+    // Live plan check — same expiry rule the paywall uses (lib/subscription.js).
+    let planActive = false;
+    let planTier = null;
+    let planExpiresAt = null;
+    const sub = subMap.get(u.id);
+    if (sub && sub.plan === 'premium' && sub.status === 'active') {
+      const expMs = sub.current_period_end ? Date.parse(sub.current_period_end) : null;
+      if (expMs === null || expMs > Date.now()) {
+        planActive = true;
+        planTier = sub.tier || 'lifetime';
+        planExpiresAt = sub.current_period_end;
+      }
+    }
     return {
       id: u.id,
       email: u.email || profile?.email || '',
@@ -314,6 +330,9 @@ export async function handleAdminUsers(env) {
       banned: Boolean(ban),
       banReason: ban?.reason || null,
       bannedAt: ban?.created_at || null,
+      planActive,
+      tier: planTier,
+      planExpiresAt,
     };
   });
   // newest registrations first
@@ -398,6 +417,67 @@ export async function handleAdminUnban(request, env) {
   }
   await sbUpdate(env, 'admin_bans', `user_id=eq.${userId}`, { active: false });
   return json({ ok: true, unbanned: userId });
+}
+
+// POST /api/admin/users/tier {userId, tier: 'free'|'monthly'|'yearly'|'lifetime'}
+// Admin manual plan control from the user-detail modal. Uses the SAME
+// subscriptions row + expiry model as the payment flow, so the paywall,
+// device limits and the Pricing page all follow instantly (cache flushed).
+export async function handleAdminUserTier(request, env) {
+  const body = await readJson(request);
+  const userId = str(body.userId, 64);
+  const tier = str(body.tier, 20);
+  if (!userId || !/^[0-9a-fA-F-]{36}$/.test(userId)) {
+    throw new HttpError(400, 'bad_request', 'userId (uuid) required');
+  }
+  if (!['free', 'monthly', 'yearly', 'lifetime'].includes(tier)) {
+    throw new HttpError(400, 'bad_request', "tier must be 'free' | 'monthly' | 'yearly' | 'lifetime'");
+  }
+
+  const emailRows = await sbRest(env, `profiles?id=eq.${userId}&select=email`).catch(() => []);
+  const email = str(body.email, 200) || emailRows[0]?.email || null;
+
+  const nowIso = new Date().toISOString();
+  let granted = { tier, expiresAt: null };
+
+  if (tier === 'free') {
+    // Revoke: keep the row but flip it to a dead free plan (same as expiry).
+    const existing = await sbRest(env, `subscriptions?parent_id=eq.${userId}&select=parent_id`).catch(() => []);
+    if (existing.length > 0) {
+      await sbUpdate(env, 'subscriptions', `parent_id=eq.${userId}`, {
+        plan: 'free', tier: null, status: 'expired', current_period_end: nowIso, source: 'admin_revoke',
+      });
+    } else {
+      await sbInsert(env, 'subscriptions', {
+        parent_id: userId, plan: 'free', tier: null, status: 'expired',
+        current_period_end: nowIso, source: 'admin_revoke',
+      }, false);
+    }
+  } else {
+    const planDef = PLANS[tier];
+    const periodEnd = planDef?.days ? new Date(Date.now() + planDef.days * 86_400_000).toISOString() : null;
+    granted = { tier, expiresAt: periodEnd };
+    const existing = await sbRest(env, `subscriptions?parent_id=eq.${userId}&select=parent_id`).catch(() => []);
+    if (existing.length > 0) {
+      await sbUpdate(env, 'subscriptions', `parent_id=eq.${userId}`, {
+        plan: 'premium', tier, status: 'active', current_period_end: periodEnd, source: 'admin_grant',
+      });
+    } else {
+      await sbInsert(env, 'subscriptions', {
+        parent_id: userId, plan: 'premium', tier, status: 'active',
+        current_period_end: periodEnd, source: 'admin_grant',
+      }, false);
+    }
+  }
+  invalidateSubscriptionCache(userId);
+
+  // Best-effort Telegram heads-up to the parent (if they configured a bot).
+  const msg = tier === 'free'
+    ? `⚠️ <b>Access Control</b>\nYour Pro subscription was removed by the administrator.\nYou are back on the Free plan.`
+    : `👑 <b>Access Control — Pro activated</b>\nPlan: <b>${tier}</b>${granted.expiresAt ? `\nActive until: ${new Date(granted.expiresAt).toDateString()}` : '\nAccess: lifetime'}\nGranted by the administrator. Enjoy all Pro features!`;
+  sendTelegramTo(env, userId, msg).catch(() => {});
+
+  return json({ ok: true, userId, ...granted });
 }
 
 // ---------- broadcast (announcements: banner / popup / notification) ----------

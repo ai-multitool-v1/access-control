@@ -8,13 +8,16 @@
 //   3. TOTP 2FA code  (ADMIN_TOTP_SECRET — 6-digit step shown only when
 //      configured; the Worker verifies it server-side, RFC 6238)
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ShieldCheck, Users, Database, RefreshCw, Ban as BanIcon, Trash2,
   Undo2, LogOut, Search, AlertTriangle, Lock, Server, KeyRound, Globe,
-  Megaphone, CreditCard, Smartphone,
+  Megaphone, CreditCard, Smartphone, Crown, Download, X, Eye, FileJson,
+  Fingerprint as FingerprintIcon, UserX,
 } from 'lucide-react';
 import { API_BASE } from '../lib/config.js';
+import { slideIn, modalIn } from '../lib/anim.js';
+import { useDialogs } from '../components/Dialog.jsx';
 import { BroadcastTab, PaymentsTab, DevicesTab } from './AdminExtras.jsx';
 
 // ---------- api ----------
@@ -233,12 +236,32 @@ function AdminLogin({ onToken }) {
 
 // ---------- users tab ----------
 
+const TIERS = [
+  { id: 'free', label: 'Free', hint: 'No pro access' },
+  { id: 'monthly', label: 'Pro · monthly', hint: '300 BDT / 30 days, timer starts now' },
+  { id: 'yearly', label: 'Pro · yearly', hint: '3,000 BDT / 365 days, timer starts now' },
+  { id: 'lifetime', label: 'Pro · lifetime', hint: '10,000 BDT · never expires' },
+];
+
+function tierChip(u) {
+  if (!u.planActive) return { tone: 'slate', label: 'free' };
+  return { tone: 'amber', label: `pro · ${u.tier || 'premium'}` };
+}
+
+function planLabel(u) {
+  if (!u.planActive) return 'Free (no active subscription)';
+  const exp = u.planExpiresAt ? new Date(u.planExpiresAt).toLocaleString() : 'never — lifetime';
+  return `PRO (${u.tier || 'premium'}) — expires: ${exp}`;
+}
+
 function UsersTab({ token, onSessionExpired }) {
   const [users, setUsers] = useState(null);
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState(null);
   const [query, setQuery] = useState('');
   const [notice, setNotice] = useState('');
+  const [selected, setSelected] = useState(null);
+  const dialog = useDialogs();
 
   const load = async () => {
     setError('');
@@ -259,7 +282,16 @@ function UsersTab({ token, onSessionExpired }) {
   }, [token]);
 
   async function banUser(u) {
-    const reason = window.prompt(`Ban ${u.email}?\n\nThe user will see this reason at sign-in:`, 'Violation of the terms of service');
+    const reason = await dialog.prompt({
+      title: `Ban ${u.email}?`,
+      body: 'The user will see this reason at every sign-in and is locked out of the whole API.',
+      label: 'Ban reason (shown to the user)',
+      placeholder: 'Violation of the terms of service',
+      initial: 'Violation of the terms of service',
+      confirmText: 'Ban user',
+      tone: 'danger',
+      required: true,
+    });
     if (!reason) return;
     setBusyId(u.id);
     try {
@@ -277,6 +309,12 @@ function UsersTab({ token, onSessionExpired }) {
   }
 
   async function unbanUser(u) {
+    const ok = await dialog.confirm({
+      title: `Unban ${u.email}?`,
+      body: 'The ban is lifted and the user can sign in again immediately.',
+      confirmText: 'Lift ban',
+    });
+    if (!ok) return;
     setBusyId(u.id);
     try {
       await adminApi(token, '/api/admin/users/unban', {
@@ -293,7 +331,13 @@ function UsersTab({ token, onSessionExpired }) {
   }
 
   async function removeUser(u) {
-    if (!window.confirm(`PERMANENTLY remove ${u.email}?\n\nTheir account, profile, devices and all device data are deleted. This cannot be undone.`)) return;
+    const ok = await dialog.confirm({
+      title: `PERMANENTLY remove ${u.email}?`,
+      body: 'Their account, profile, devices and all device data are deleted.\nThis cannot be undone.',
+      confirmText: 'Delete account',
+      tone: 'danger',
+    });
+    if (!ok) return;
     setBusyId(u.id);
     try {
       await adminApi(token, '/api/admin/users/remove', {
@@ -301,6 +345,24 @@ function UsersTab({ token, onSessionExpired }) {
         body: JSON.stringify({ userId: u.id }),
       });
       setNotice(`${u.email} removed`);
+      setSelected(null);
+      await load();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function setTier(u, tier) {
+    setBusyId(u.id);
+    try {
+      await adminApi(token, '/api/admin/users/tier', {
+        method: 'POST',
+        body: JSON.stringify({ userId: u.id, email: u.email, tier }),
+      });
+      const label = TIERS.find((t) => t.id === tier)?.label || tier;
+      setNotice(`${u.email} → ${label}`);
       await load();
     } catch (e) {
       setError(e.message);
@@ -317,10 +379,13 @@ function UsersTab({ token, onSessionExpired }) {
     );
   }, [users, query]);
 
+  const bannedCount = (users || []).filter((u) => u.banned).length;
+  const proCount = (users || []).filter((u) => u.planActive).length;
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 min-w-[220px]">
+        <div className="relative min-w-[220px] flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
           <input className="input-field pl-9" placeholder="Search email / name / IP / fingerprint"
             value={query} onChange={(e) => setQuery(e.target.value)} />
@@ -329,11 +394,16 @@ function UsersTab({ token, onSessionExpired }) {
           <RefreshCw className="h-4 w-4" /> Refresh
         </button>
         <Chip>{filtered.length} users</Chip>
-        <Chip tone="hazard">{(users || []).filter((u) => u.banned).length} banned</Chip>
+        <Chip tone="neon">{proCount} pro</Chip>
+        <Chip tone="hazard">{bannedCount} banned</Chip>
       </div>
 
       {notice && <p className="border-2 border-neon/60 bg-neon/10 px-3 py-2 font-mono text-xs text-neon">{notice}</p>}
       {error && <p className="border-2 border-hazard/60 bg-hazard/10 px-3 py-2 font-mono text-xs text-red-300">{error}</p>}
+
+      <p className="font-mono text-[10px] uppercase tracking-wider text-slate-600">
+        Tap any user row to open their full profile — ban / unban, pro grant, delete, summary download.
+      </p>
 
       <div className="overflow-x-auto border-2 border-space-600">
         <table className="w-full min-w-[900px] border-collapse text-left">
@@ -343,61 +413,66 @@ function UsersTab({ token, onSessionExpired }) {
               <th className="px-3 py-2">Registered</th>
               <th className="px-3 py-2">Last login</th>
               <th className="px-3 py-2">Login IP</th>
-              <th className="px-3 py-2">Fingerprint</th>
-              <th className="px-3 py-2">User agent</th>
+              <th className="px-3 py-2">Plan</th>
               <th className="px-3 py-2 text-right">Actions</th>
             </tr>
           </thead>
           <tbody>
             {(users === null) && (
-              <tr><td colSpan={7} className="px-3 py-6 text-center font-mono text-xs text-slate-500">Loading…</td></tr>
+              <tr><td colSpan={6} className="px-3 py-6 text-center font-mono text-xs text-slate-500">Loading…</td></tr>
             )}
-            {filtered.map((u) => (
-              <tr key={u.id} className="border-t border-space-600/60 align-top hover:bg-space-700/20">
-                <td className="px-3 py-2">
-                  <div className="font-mono text-xs text-white">{u.email}</div>
-                  {u.name && <div className="text-[11px] text-slate-400">{u.name}</div>}
-                  <div className="mt-1 flex flex-wrap gap-1">
-                    {u.banned ? <Chip tone="hazard"><BanIcon className="h-3 w-3" /> banned</Chip> : <Chip tone="neon">active</Chip>}
-                    <Chip>{u.loginEvents} log events</Chip>
-                  </div>
-                  {u.banned && u.banReason && (
-                    <div className="mt-1 font-mono text-[10px] text-red-300">reason: {u.banReason}</div>
-                  )}
-                </td>
-                <td className="px-3 py-2 font-mono text-[11px] text-slate-300">
-                  {u.registeredAt ? new Date(u.registeredAt).toLocaleString() : '—'}
-                </td>
-                <td className="px-3 py-2 font-mono text-[11px] text-slate-300">
-                  {u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : '—'}
-                </td>
-                <td className="px-3 py-2 font-mono text-[11px] text-slate-300">{u.lastLoginIp || '—'}</td>
-                <td className="px-3 py-2 font-mono text-[11px] text-slate-400">
-                  {u.fingerprint ? `${u.fingerprint.slice(0, 16)}${u.fingerprint.length > 16 ? '…' : ''}` : '—'}
-                </td>
-                <td className="max-w-[220px] px-3 py-2 font-mono text-[10px] text-slate-500" title={u.lastLoginUa || ''}>
-                  {u.lastLoginUa ? `${u.lastLoginUa.slice(0, 60)}${u.lastLoginUa.length > 60 ? '…' : ''}` : '—'}
-                </td>
-                <td className="px-3 py-2">
-                  <div className="flex justify-end gap-1">
-                    {u.banned ? (
-                      <button className="btn-ghost px-2 py-1" title="Lift the ban" disabled={busyId === u.id} onClick={() => unbanUser(u)}>
-                        <Undo2 className="h-4 w-4" />
-                      </button>
-                    ) : (
-                      <button className="btn-ghost px-2 py-1 text-amber-300" title="Ban with reason" disabled={busyId === u.id} onClick={() => banUser(u)}>
-                        <BanIcon className="h-4 w-4" />
-                      </button>
+            {filtered.map((u) => {
+              const tc = tierChip(u);
+              return (
+                <tr key={u.id} tabIndex={0} role="button"
+                  className="cursor-pointer border-t border-space-600/60 align-top transition hover:bg-space-700/30 focus:bg-space-700/30"
+                  onClick={() => setSelected(u)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') setSelected(u); }}
+                  title="Open user profile"
+                >
+                  <td className="px-3 py-2">
+                    <div className="font-mono text-xs text-white">{u.email}</div>
+                    {u.name && <div className="text-[11px] text-slate-400">{u.name}</div>}
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {u.banned ? <Chip tone="hazard"><BanIcon className="h-3 w-3" /> banned</Chip> : <Chip tone="neon">active</Chip>}
+                      <Chip>{u.loginEvents} log events</Chip>
+                    </div>
+                    {u.banned && u.banReason && (
+                      <div className="mt-1 font-mono text-[10px] text-red-300">reason: {u.banReason}</div>
                     )}
-                    <button className="btn-ghost px-2 py-1 text-red-300" title="Remove user permanently" disabled={busyId === u.id} onClick={() => removeUser(u)}>
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
+                  </td>
+                  <td className="px-3 py-2 font-mono text-[11px] text-slate-300">
+                    {u.registeredAt ? new Date(u.registeredAt).toLocaleString() : '—'}
+                  </td>
+                  <td className="px-3 py-2 font-mono text-[11px] text-slate-300">
+                    {u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : '—'}
+                  </td>
+                  <td className="px-3 py-2 font-mono text-[11px] text-slate-300">{u.lastLoginIp || '—'}</td>
+                  <td className="px-3 py-2"><Chip tone={tc.tone}>{tc.label}</Chip></td>
+                  <td className="px-3 py-2">
+                    <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                      <button className="btn-ghost px-2 py-1" title="Open full profile" onClick={() => setSelected(u)}>
+                        <Eye className="h-4 w-4" />
+                      </button>
+                      {u.banned ? (
+                        <button className="btn-ghost px-2 py-1" title="Lift the ban" disabled={busyId === u.id} onClick={() => unbanUser(u)}>
+                          <Undo2 className="h-4 w-4" />
+                        </button>
+                      ) : (
+                        <button className="btn-ghost px-2 py-1 text-amber-300" title="Ban with reason" disabled={busyId === u.id} onClick={() => banUser(u)}>
+                          <BanIcon className="h-4 w-4" />
+                        </button>
+                      )}
+                      <button className="btn-ghost px-2 py-1 text-red-300" title="Remove user permanently" disabled={busyId === u.id} onClick={() => removeUser(u)}>
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
             {filtered.length === 0 && users !== null && (
-              <tr><td colSpan={7} className="px-3 py-6 text-center font-mono text-xs text-slate-500">No users match.</td></tr>
+              <tr><td colSpan={6} className="px-3 py-6 text-center font-mono text-xs text-slate-500">No users match.</td></tr>
             )}
           </tbody>
         </table>
@@ -405,6 +480,228 @@ function UsersTab({ token, onSessionExpired }) {
       <p className="font-mono text-[10px] uppercase tracking-wider text-slate-600">
         Ban = the user sees your reason at every sign-in and is locked out of the whole API. Remove = account + devices + data cascade-deleted.
       </p>
+
+      {selected && (
+        <UserDetailModal
+          user={users.find((x) => x.id === selected.id) || selected}
+          busyId={busyId}
+          onClose={() => setSelected(null)}
+          onBan={() => banUser(selected)}
+          onUnban={() => unbanUser(selected)}
+          onRemove={() => removeUser(selected)}
+          onSetTier={(tier) => setTier(selected, tier)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ---------- user detail modal ----------
+
+function downloadFile(name, content, mime) {
+  const blob = new Blob([content], { type: mime || 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+function buildSummaryText(u) {
+  const lines = [
+    '==============================================',
+    '  ACCESS CONTROL — USER SUMMARY (admin export)',
+    '==============================================',
+    `Generated   : ${new Date().toLocaleString()}`,
+    '',
+    '— Identity —',
+    `User id      : ${u.id}`,
+    `Email        : ${u.email}`,
+    `Name         : ${u.name || '—'}`,
+    `Status       : ${u.banned ? `BANNED (reason: ${u.banReason || 'n/a'})` : 'active'}`,
+    '',
+    '— Subscription —',
+    `Plan         : ${planLabel(u)}`,
+    '',
+    '— Timeline —',
+    `Registered   : ${u.registeredAt ? new Date(u.registeredAt).toLocaleString() : '—'}`,
+    `Confirmed    : ${u.confirmedAt ? new Date(u.confirmedAt).toLocaleString() : '—'}`,
+    `Last login   : ${u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : '—'}`,
+    `Login events : ${u.loginEvents ?? 0}`,
+    '',
+    '— Browser fingerprint —',
+    `First seen IP : ${u.firstSeenIp || '—'}`,
+    `Last login IP : ${u.lastLoginIp || '—'}`,
+    `Fingerprint   : ${u.fingerprint || '—'}`,
+    `User agent    : ${u.lastLoginUa || '—'}`,
+    '',
+  ];
+  return lines.join('\n');
+}
+
+function UserDetailModal({ user: u, busyId, onClose, onBan, onUnban, onRemove, onSetTier }) {
+  const ref = useRef(null);
+  const [tierOpen, setTierOpen] = useState(false);
+  const tc = tierChip(u);
+
+  useEffect(() => modalIn(ref.current), []);
+
+  const fmt = (iso) => (iso ? new Date(iso).toLocaleString() : '—');
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/85 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div ref={ref} className="max-h-[88vh] w-full max-w-2xl overflow-y-auto border-2 border-space-600 bg-space-900 shadow-brutal-lg">
+        {/* header */}
+        <div className="sticky top-0 z-10 flex items-center gap-3 border-b-2 border-space-600 bg-space-800 px-5 py-3">
+          <div className="flex h-9 w-9 flex-none items-center justify-center border-2 border-neon bg-neon/10">
+            <ShieldCheck className="h-4 w-4 text-neon" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="truncate font-mono text-sm font-black text-white">{u.email}</div>
+            <div className="font-mono text-[9px] uppercase tracking-[0.25em] text-slate-500">user profile · {u.name || 'no name'}</div>
+          </div>
+          <Chip tone={u.banned ? 'hazard' : 'neon'}>{u.banned ? 'banned' : 'active'}</Chip>
+          <Chip tone={tc.tone}>{tc.label}</Chip>
+          <button onClick={onClose} className="border-2 border-space-600 p-1 text-slate-400 hover:border-hazard hover:text-red-300" aria-label="Close">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="space-y-4 p-5">
+          {/* identity + timeline */}
+          <section>
+            <h4 className="mb-2 font-mono text-[10px] font-black uppercase tracking-[0.25em] text-neon-dim">Account</h4>
+            <div className="border-2 border-space-600 bg-space-800/60">
+              <KV k="User id (uid)" v={u.id} />
+              <KV k="Email" v={u.email} mono={false} />
+              <KV k="Display name" v={u.name} mono={false} />
+              <KV k="Registration date" v={fmt(u.registeredAt)} />
+              <KV k="Email confirmed" v={fmt(u.confirmedAt)} />
+              <KV k="Last login" v={fmt(u.lastLoginAt)} />
+              <KV k="Login events" v={String(u.loginEvents ?? 0)} />
+            </div>
+          </section>
+
+          {/* browser fingerprint */}
+          <section>
+            <h4 className="mb-2 flex items-center gap-1.5 font-mono text-[10px] font-black uppercase tracking-[0.25em] text-neon-dim">
+              <FingerprintIcon /> Browser fingerprint
+            </h4>
+            <div className="border-2 border-space-600 bg-space-800/60">
+              <KV k="Registration IP" v={u.firstSeenIp} />
+              <KV k="Last login IP" v={u.lastLoginIp} />
+              <KV k="Fingerprint hash" v={u.fingerprint} />
+              <KV k="User agent" v={u.lastLoginUa} mono={false} />
+            </div>
+          </section>
+
+          {/* ban + plan */}
+          <section className="grid gap-4 sm:grid-cols-2">
+            <div className="border-2 border-space-600 bg-space-800/60 p-4">
+              <h4 className="mb-2 flex items-center gap-1.5 font-mono text-[10px] font-black uppercase tracking-[0.25em] text-neon-dim">
+                <BanIcon className="h-3.5 w-3.5" /> Ban status
+              </h4>
+              {u.banned ? (
+                <>
+                  <Chip tone="hazard">banned</Chip>
+                  <p className="mt-2 font-mono text-[11px] text-red-300">reason: {u.banReason || '—'}</p>
+                  <p className="mt-1 font-mono text-[10px] text-slate-500">since {fmt(u.bannedAt)}</p>
+                </>
+              ) : (
+                <p className="font-mono text-[11px] text-slate-400">Not banned — full API access.</p>
+              )}
+            </div>
+            <div className="border-2 border-space-600 bg-space-800/60 p-4">
+              <h4 className="mb-2 flex items-center gap-1.5 font-mono text-[10px] font-black uppercase tracking-[0.25em] text-neon-dim">
+                <Crown className="h-3.5 w-3.5" /> Subscription
+              </h4>
+              <Chip tone={tc.tone}>{tc.label}</Chip>
+              <p className="mt-2 font-mono text-[10px] leading-relaxed text-slate-400">{planLabel(u)}</p>
+            </div>
+          </section>
+
+          {/* actions */}
+          <section className="border-2 border-space-600 bg-space-800/60 p-4">
+            <h4 className="mb-3 font-mono text-[10px] font-black uppercase tracking-[0.25em] text-neon-dim">Admin actions</h4>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {u.banned ? (
+                <button className="btn-ghost text-xs" disabled={busyId === u.id} onClick={onUnban}>
+                  <Undo2 className="h-4 w-4" /> Unban user
+                </button>
+              ) : (
+                <button className="btn-danger text-xs" disabled={busyId === u.id} onClick={onBan}>
+                  <BanIcon className="h-4 w-4" /> Ban user…
+                </button>
+              )}
+              <button className="btn-ghost text-xs" disabled={busyId === u.id} onClick={() => setTierOpen(true)}>
+                <Crown className="h-4 w-4" /> Set plan / tier…
+              </button>
+              <button
+                className="btn-ghost text-xs"
+                onClick={() => downloadFile(`access-control-user-${u.email.replace(/[^a-z0-9]+/gi, '_')}.txt`, buildSummaryText(u), 'text/plain')}
+              >
+                <Download className="h-4 w-4" /> Summary (.txt)
+              </button>
+              <button
+                className="btn-ghost text-xs"
+                title="Raw JSON export"
+                onClick={() => downloadFile(`access-control-user-${u.email.replace(/[^a-z0-9]+/gi, '_')}.json`, JSON.stringify(u, null, 2), 'application/json')}
+              >
+                <FileJson className="h-4 w-4" /> Raw (.json)
+              </button>
+              <button className="btn-danger text-xs sm:col-span-2" disabled={busyId === u.id} onClick={onRemove}>
+                <Trash2 className="h-4 w-4" /> Delete account permanently
+              </button>
+            </div>
+            <p className="mt-3 font-mono text-[9px] uppercase tracking-wider text-slate-600">
+              Delete cascades: profile → devices → pairings, policies, usage, events. Irreversible.
+            </p>
+          </section>
+        </div>
+
+        {tierOpen && (
+          <TierModal
+            user={u}
+            onClose={() => setTierOpen(false)}
+            onPick={(tier) => { setTierOpen(false); onSetTier(tier); }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TierModal({ user: u, onClose, onPick }) {
+  const ref = useRef(null);
+  useEffect(() => modalIn(ref.current), []);
+  return (
+    <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/85 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div ref={ref} className="w-full max-w-sm border-2 border-space-600 bg-space-900 shadow-brutal-lg">
+        <div className="flex items-center gap-2 border-b-2 border-space-600 bg-space-700/50 px-4 py-3">
+          <Crown className="h-4 w-4 text-amber-300" />
+          <h3 className="min-w-0 flex-1 truncate font-mono text-xs font-black uppercase tracking-[0.2em] text-white">Set plan — {u.email}</h3>
+          <button onClick={onClose} className="border-2 border-space-600 p-1 text-slate-400 hover:border-hazard hover:text-red-300" aria-label="Close">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        <div className="space-y-2 p-4">
+          {TIERS.map((t) => (
+            <button key={t.id} onClick={() => onPick(t.id)}
+              className={`block w-full border-2 p-3 text-left transition hover:-translate-y-0.5 ${
+                t.id === 'free' ? 'border-space-600 hover:border-slate-400' : 'border-amber-400/40 bg-amber-400/5 hover:border-amber-400'
+              }`}>
+              <div className={`font-mono text-xs font-black uppercase tracking-wider ${t.id === 'free' ? 'text-slate-300' : 'text-amber-300'}`}>
+                {t.id === 'free' ? <span className="inline-flex items-center gap-1.5"><UserX className="h-3.5 w-3.5" />{t.label}</span> : t.label}
+              </div>
+              <div className="mt-0.5 font-mono text-[10px] text-slate-500">{t.hint}</div>
+            </button>
+          ))}
+          <p className="pt-1 font-mono text-[9px] uppercase tracking-wider text-slate-600">
+            The parent is notified on Telegram (if configured). Monthly/yearly timers start now.
+          </p>
+        </div>
+      </div>
     </div>
   );
 }
@@ -512,15 +809,36 @@ function SecurityTab({ token }) {
 
 // ---------- app shell ----------
 
+const TABS = [
+  { id: 'users', label: 'Users', icon: Users },
+  { id: 'security', label: 'Database & Security', icon: Database },
+  { id: 'broadcast', label: 'Broadcast', icon: Megaphone },
+  { id: 'payments', label: 'Payments', icon: CreditCard },
+  { id: 'devices', label: 'Devices', icon: Smartphone },
+];
+
 export default function AdminApp() {
   const [token, setToken] = useState(() => sessionStorage.getItem('ac_admin_token') || '');
   const [tab, setTab] = useState('users');
   const [error, setError] = useState('');
+  const stripRef = useRef(null);
+  const activeRef = useRef(null);
 
   useEffect(() => {
     if (token) sessionStorage.setItem('ac_admin_token', token);
     else sessionStorage.removeItem('ac_admin_token');
   }, [token]);
+
+  // GSAP slide-in for the tab strip once the console unlocks.
+  useEffect(() => {
+    if (token) return slideIn(stripRef.current, { x: 28 });
+    return undefined;
+  }, [token]);
+
+  // Keep the active tab visible — scrolls the strip on narrow screens.
+  useEffect(() => {
+    activeRef.current?.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' });
+  }, [tab]);
 
   if (!token) {
     return <AdminLogin onToken={(t) => { setToken(t); setError(''); }} />;
@@ -528,51 +846,43 @@ export default function AdminApp() {
 
   return (
     <div className="min-h-screen bg-space-900 text-slate-200">
-      <header className="border-b-2 border-space-600 bg-space-800/80">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-4 px-4 py-3">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="h-5 w-5 text-neon" />
-            <span className="font-mono text-sm font-black uppercase tracking-[0.25em] text-white">SETBD Console</span>
-            <Chip tone="hazard">admin</Chip>
+      <header className="sticky top-0 z-30 border-b-2 border-space-600 bg-space-800/95 backdrop-blur-sm">
+        <div className="mx-auto max-w-6xl px-4 py-3">
+          {/* row 1 — brand + lock (never collides with the tabs) */}
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <ShieldCheck className="h-5 w-5 flex-none text-neon" />
+              <span className="truncate font-mono text-sm font-black uppercase tracking-[0.25em] text-white">SETBD Console</span>
+              <Chip tone="hazard">admin</Chip>
+            </div>
+            <button
+              onClick={() => { setToken(''); }}
+              className="flex flex-none items-center gap-1.5 border-2 border-space-600 px-2.5 py-1.5 font-mono text-[11px] uppercase tracking-wider text-slate-400 hover:border-hazard hover:text-red-300"
+              title="Lock console"
+            >
+              <LogOut className="h-4 w-4" />
+              <span className="hidden sm:inline">Lock</span>
+            </button>
           </div>
-          <nav className="flex gap-1">
-            <button
-              onClick={() => setTab('users')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider ${tab === 'users' ? 'border-2 border-neon bg-neon/10 text-neon' : 'border-2 border-transparent text-slate-400 hover:text-white'}`}
-            >
-              <Users className="h-4 w-4" /> Users
-            </button>
-            <button
-              onClick={() => setTab('security')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider ${tab === 'security' ? 'border-2 border-neon bg-neon/10 text-neon' : 'border-2 border-transparent text-slate-400 hover:text-white'}`}
-            >
-              <Database className="h-4 w-4" /> Database & Security
-            </button>
-            <button
-              onClick={() => setTab('broadcast')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider ${tab === 'broadcast' ? 'border-2 border-neon bg-neon/10 text-neon' : 'border-2 border-transparent text-slate-400 hover:text-white'}`}
-            >
-              <Megaphone className="h-4 w-4" /> Broadcast
-            </button>
-            <button
-              onClick={() => setTab('payments')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider ${tab === 'payments' ? 'border-2 border-neon bg-neon/10 text-neon' : 'border-2 border-transparent text-slate-400 hover:text-white'}`}
-            >
-              <CreditCard className="h-4 w-4" /> Payments
-            </button>
-            <button
-              onClick={() => setTab('devices')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider ${tab === 'devices' ? 'border-2 border-neon bg-neon/10 text-neon' : 'border-2 border-transparent text-slate-400 hover:text-white'}`}
-            >
-              <Smartphone className="h-4 w-4" /> Devices
-            </button>
+          {/* row 2 — horizontally scrollable tab strip: tabs can never be
+              clipped below/off the display; swipe, wheel or drag to reveal */}
+          <nav ref={stripRef} className="tab-strip mt-3 -mx-1 px-1" aria-label="Admin sections">
+            {TABS.map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                ref={tab === id ? activeRef : null}
+                onClick={() => setTab(id)}
+                aria-current={tab === id ? 'page' : undefined}
+                className={`flex items-center gap-1.5 border-2 px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider transition-colors ${
+                  tab === id
+                    ? 'border-neon bg-neon/10 text-neon shadow-brutal-neon'
+                    : 'border-space-600 bg-space-700/40 text-slate-400 hover:border-slate-500 hover:text-white'
+                }`}
+              >
+                <Icon className="h-4 w-4" /> {label}
+              </button>
+            ))}
           </nav>
-          <button
-            onClick={() => { setToken(''); }}
-            className="ml-auto flex items-center gap-1.5 border-2 border-space-600 px-3 py-1.5 font-mono text-[11px] uppercase tracking-wider text-slate-400 hover:border-hazard hover:text-red-300"
-          >
-            <LogOut className="h-4 w-4" /> Lock
-          </button>
         </div>
       </header>
 
