@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { RefreshCw, Image as ImageIcon, Film, Folder, File as FileIcon, X, Download, Loader2, CheckSquare, Square, Play, Package, Music, FolderOpen } from 'lucide-react';
 import { api } from '../../services/api.js';
 import { command } from '../../services/ws.js';
-import { transferFile, downloadBlob, makeZip, fmtBytes } from '../../lib/transfer.js';
+import { transferFile, downloadBlob, makeZip, fmtBytes, retypedBlob } from '../../lib/transfer.js';
+import { MediaPlayer } from './PlayerEngine.jsx';
 import { SpatialCard, fmtTime, EmptyIcon } from '../ui.jsx';
 import ProGate from '../ProGate.jsx';
 import { usePlan } from '../../services/plan.jsx';
@@ -93,7 +94,9 @@ function PreviewModal({ item, onClose }) {
     try {
       const out = await xfer.run(transferParams);
       if (player?.url) URL.revokeObjectURL(player.url);
-      setPlayer({ url: URL.createObjectURL(out.blob), kind: isAudio ? 'audio' : 'video' });
+      // Retype the blob from the file extension — the child often reports
+      // octet-stream / exotic MIME, which makes decodable videos refuse to load.
+      setPlayer({ url: URL.createObjectURL(retypedBlob(out.blob, meta.name)), kind: isAudio ? 'audio' : 'video' });
     } catch (e) {
       setPlayerErr(e.message);
     }
@@ -152,26 +155,7 @@ function PreviewModal({ item, onClose }) {
 
         <div className="min-h-0 flex-1 overflow-auto border-2 border-space-600 bg-black/60">
           {videoPlaying || audioPlaying ? (
-            videoPlaying ? (
-              <video
-                src={player.url}
-                controls
-                autoPlay
-                playsInline
-                className="mx-auto max-h-[55vh] w-auto max-w-full"
-                onError={() => setPlayerErr("This format can't be played by the browser — download it instead.")}
-              />
-            ) : (
-              <div className="p-4">
-                <audio
-                  src={player.url}
-                  controls
-                  autoPlay
-                  className="w-full"
-                  onError={() => setPlayerErr("This format can't be played by the browser — download it instead.")}
-                />
-              </div>
-            )
+            <MediaPlayer src={player.url} kind={videoPlaying ? 'video' : 'audio'} autoplay />
           ) : player && player.kind === 'pdf' ? (
             <iframe src={player.url} title={meta.name} className="h-[60vh] w-full bg-white" />
           ) : isImage ? (

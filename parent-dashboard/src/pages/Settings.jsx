@@ -167,7 +167,7 @@ function FeedbackCard() {
         <Toggle
           checked={soundOn}
           label="Notification tone (live alerts)"
-          onChange={(v) => { setSoundEnabled(v); setSoundOn(v); if (v) { primeAudio(); playNotifyTone('info'); } }}
+          onChange={(v) => { setSoundEnabled(v); setSoundOn(v); if (v) { primeAudio().then(() => playNotifyTone('info')); } }}
         />
         <Toggle
           checked={browserOn}

@@ -1,4 +1,5 @@
-// feedback.js — parent-side haptics, notification tone and browser alerts.
+// feedback.js — parent-side haptics, notification tones (Tone.js) and browser
+// alerts.
 //
 // All three are parent-controlled toggles stored in localStorage:
 //   ac_haptic          — vibrate on every dashboard interaction
@@ -8,8 +9,14 @@
 //                        with Web Push (Settings → Phone notifications) alerts
 //                        also arrive when the dashboard tab is fully closed.
 //
+// Sounds are rendered with Tone.js (tone@15): a soft two-note chime for info,
+// an urgent rising alarm for critical events and a subtle pop for generic
+// toasts. Tone.js gives proper envelopes/scheduling with no audio assets.
+//
 // Vibration uses the standard Vibration API (Android Chrome / Samsung
 // Internet). iOS Safari ignores it — the tone + OS notification still fire.
+
+import * as Tone from 'tone';
 
 const KEYS = {
   haptic: 'ac_haptic',
@@ -58,7 +65,7 @@ export function hapticAlert() {
   haptic([90, 60, 90, 60, 140]);
 }
 
-// ---------- notification tone ----------
+// ---------- notification tone (Tone.js) ----------
 
 export function soundEnabled() {
   return readBool(KEYS.sound, true);
@@ -68,62 +75,82 @@ export function setSoundEnabled(v) {
   writeBool(KEYS.sound, v);
 }
 
-let audioCtx = null;
+// Lazily created synths — one soft polyphonic chime voice and one urgent
+// alarm voice. Tone.js routes everything through its own AudioContext.
+let chime = null;
+let alarm = null;
 
-function getCtx() {
-  if (audioCtx) return audioCtx;
-  try {
-    const AC = window.AudioContext || window.webkitAudioContext;
-    if (!AC) return null;
-    audioCtx = new AC();
-  } catch {
-    return null;
+function getChime() {
+  if (!chime) {
+    chime = new Tone.PolySynth(Tone.Synth, {
+      oscillator: { type: 'sine' },
+      envelope: { attack: 0.005, decay: 0.2, sustain: 0.05, release: 0.35 },
+    }).toDestination();
+    chime.volume.value = -9;
   }
-  return audioCtx;
+  return chime;
+}
+
+function getAlarm() {
+  if (!alarm) {
+    alarm = new Tone.PolySynth(Tone.Synth, {
+      oscillator: { type: 'square' },
+      envelope: { attack: 0.002, decay: 0.16, sustain: 0.08, release: 0.2 },
+    }).toDestination();
+    alarm.volume.value = -16;
+  }
+  return alarm;
 }
 
 // Resume must happen inside a user gesture on mobile browsers — primed by the
 // global click handler (see App.jsx) so the first real alert can sound.
-export function primeAudio() {
-  const ctx = getCtx();
-  if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {});
-}
-
-function beep(ctx, freq, start, dur, type = 'sine', gain = 0.09) {
-  const osc = ctx.createOscillator();
-  const g = ctx.createGain();
-  osc.type = type;
-  osc.frequency.setValueAtTime(freq, ctx.currentTime + start);
-  g.gain.setValueAtTime(0, ctx.currentTime + start);
-  g.gain.linearRampToValueAtTime(gain, ctx.currentTime + start + 0.015);
-  g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + start + dur);
-  osc.connect(g).connect(ctx.destination);
-  osc.start(ctx.currentTime + start);
-  osc.stop(ctx.currentTime + start + dur + 0.05);
+export async function primeAudio() {
+  try {
+    if (Tone.getContext().state !== 'running') {
+      await Tone.start();
+    }
+    await Tone.getContext().resume();
+  } catch { /* audio unavailable */ }
 }
 
 /**
- * Notification tone — a short two-note chime (info/warning) or a longer
- * rising alarm (critical). Rendered with WebAudio: no audio asset needed,
- * works offline, never blocked by media autoplay policies after priming.
+ * Notification tone (Tone.js):
+ *   info     → soft two-note chime (E5 → A5)
+ *   warning  → three quick mid notes (A4 → C5 → E5)
+ *   critical → rising square alarm (E5 → G5 → B5)
  */
 export function playNotifyTone(severity = 'info') {
   if (!soundEnabled()) return;
-  const ctx = getCtx();
-  if (!ctx) return;
-  if (ctx.state === 'suspended') {
-    // Not primed yet (first alert before any user gesture) — try once silently.
-    ctx.resume().catch(() => {});
-  }
   try {
+    const now = Tone.now();
     if (severity === 'critical') {
-      beep(ctx, 660, 0, 0.16, 'square', 0.07);
-      beep(ctx, 880, 0.2, 0.16, 'square', 0.07);
-      beep(ctx, 1100, 0.4, 0.28, 'square', 0.07);
+      const s = getAlarm();
+      s.triggerAttackRelease('E5', 0.14, now);
+      s.triggerAttackRelease('G5', 0.14, now + 0.18);
+      s.triggerAttackRelease('B5', 0.32, now + 0.36);
+    } else if (severity === 'warning') {
+      const s = getChime();
+      s.triggerAttackRelease('A4', 0.1, now);
+      s.triggerAttackRelease('C5', 0.1, now + 0.14);
+      s.triggerAttackRelease('E5', 0.22, now + 0.28);
     } else {
-      beep(ctx, 880, 0, 0.12, 'sine');
-      beep(ctx, 1320, 0.12, 0.2, 'sine');
+      const s = getChime();
+      s.triggerAttackRelease('E5', 0.12, now);
+      s.triggerAttackRelease('A5', 0.24, now + 0.13);
     }
+  } catch { /* audio unavailable */ }
+}
+
+/**
+ * Toast pop (Tone.js) — a tiny, low-volume blip for non-alert surfaces
+ * (announcement toasts, UI confirmations). Deliberately much softer than the
+ * notification chime so live child alerts stay unmistakable.
+ */
+export function playToastTone() {
+  if (!soundEnabled()) return;
+  try {
+    const s = getChime();
+    s.triggerAttackRelease('C6', 0.05, Tone.now(), 0.4);
   } catch { /* audio unavailable */ }
 }
 

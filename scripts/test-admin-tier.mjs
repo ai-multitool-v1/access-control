@@ -117,7 +117,9 @@ res = await handleAdminUserTier(jsonReq({ userId: UID, tier: 'free' }), ENV);
 data = await res.json();
 check('revoke → ok tier free', data.ok === true && data.tier === 'free');
 const patch2 = calls.find((c) => c.method === 'PATCH' && c.url.includes('/rest/v1/subscriptions'));
-check('revoke patch: plan free, status expired', patch2 && patch2.body.plan === 'free' && patch2.body.status === 'expired' && patch2.body.source === 'admin_revoke');
+// status must satisfy subscriptions_status_check — 'canceled' is a legal value,
+// the old 'expired' caused a PostgREST 400 and broke plan downgrades (0009 widens it anyway)
+check('revoke patch: plan free, status canceled (constraint-safe)', patch2 && patch2.body.plan === 'free' && patch2.body.status === 'canceled' && patch2.body.source === 'admin_revoke');
 
 // ---- revoke with no row → inserts dead row (harmless, keeps state explicit) ----
 

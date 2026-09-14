@@ -7,7 +7,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Megaphone, RefreshCw, Ban as BanIcon, Trash2, Check, X, Eye, Smartphone,
   Cpu, BadgeCheck, Clock, XCircle, Loader2, ImageIcon, Link2, Search,
-  BatteryCharging, Signal, Mail,
+  BatteryCharging, Signal, Mail, CheckSquare, Square,
 } from 'lucide-react';
 import { API_BASE } from '../lib/config.js';
 import { useDialogs } from '../components/Dialog.jsx';
@@ -198,9 +198,13 @@ export function BroadcastTab({ token, onSessionExpired }) {
 export function PaymentsTab({ token, onSessionExpired }) {
   const [rows, setRows] = useState(null);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [busyId, setBusyId] = useState(null);
   const [shot, setShot] = useState({}); // requestId -> objectURL
   const [zoom, setZoom] = useState(null);
+  // mark & remove: reviewed rows (esp. rejected) can be marked and purged
+  const [sel, setSel] = useState(() => new Set());
+  const [deleting, setDeleting] = useState(false);
   const dialog = useDialogs();
 
   const load = async () => {
@@ -208,12 +212,52 @@ export function PaymentsTab({ token, onSessionExpired }) {
     try {
       const d = await adminApi(token, '/api/admin/payments');
       setRows(d.payments || []);
+      setSel(new Set());
     } catch (e) {
       if (e.message === 'ADMIN_SESSION_EXPIRED') onSessionExpired();
       else setError(e.message);
     }
   };
   useEffect(() => { load(); /* eslint-disable-line */ }, []);
+
+  // ---- mark & remove (rejected / reviewed rows leave the console for good) ----
+  const toggleMark = (id) => {
+    setSel((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const allMarked = (rows || []).length > 0 && rows.every((r) => sel.has(r.id));
+  const markAll = () => {
+    setSel(allMarked ? new Set() : new Set((rows || []).map((r) => r.id)));
+  };
+
+  async function deleteSelected() {
+    if (sel.size === 0) return;
+    const ok = await dialog.confirm({
+      title: `Remove ${sel.size} payment request${sel.size > 1 ? 's' : ''}?`,
+      body: 'The rows and their uploaded verification screenshots are deleted permanently.\nApproved plans already granted are NOT affected — only the request records go away.',
+      confirmText: 'Remove requests',
+      tone: 'danger',
+    });
+    if (!ok) return;
+    setDeleting(true); setError('');
+    try {
+      const d = await adminApi(token, '/api/admin/payments/delete', {
+        method: 'POST',
+        body: JSON.stringify({ ids: [...sel] }),
+      });
+      setNotice(`${d.deleted} request(s) removed${d.screenshots ? ` · ${d.screenshots} screenshot(s) purged` : ''}.`);
+      await load();
+    } catch (e) {
+      if (e.message === 'ADMIN_SESSION_EXPIRED') onSessionExpired();
+      else setError(e.message);
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   async function showShot(r) {
     if (shot[r.id]) { setZoom(shot[r.id]); return; }
@@ -271,12 +315,38 @@ export function PaymentsTab({ token, onSessionExpired }) {
         </button>
       </div>
       {error && <p className="mb-3 border-2 border-hazard/60 bg-hazard/10 px-3 py-2 font-mono text-xs text-red-300">{error}</p>}
+      {notice && <p className="mb-3 border-2 border-emerald-500/50 bg-emerald-500/10 px-3 py-2 font-mono text-xs text-emerald-300">{notice}</p>}
+
+      {/* mark & remove action bar — rejected rows stay visible with full details until removed */}
+      {rows && rows.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <button onClick={markAll}
+            className="flex items-center gap-1.5 border-2 border-space-600 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider text-slate-300 hover:border-neon hover:text-neon">
+            {allMarked ? <CheckSquare className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
+            {allMarked ? 'Unmark all' : 'Mark all'}
+          </button>
+          <span className="font-mono text-[10px] uppercase tracking-wider text-slate-500">{sel.size} marked</span>
+          {sel.size > 0 && (
+            <button onClick={deleteSelected} disabled={deleting}
+              className="ml-auto flex items-center gap-1.5 border-2 border-hazard/60 bg-hazard/10 px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-red-300 hover:bg-hazard/20 disabled:opacity-40">
+              {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+              Remove marked ({sel.size})
+            </button>
+          )}
+        </div>
+      )}
+
       {!rows ? <p className="font-mono text-xs text-slate-500">Loading…</p> : rows.length === 0 ? (
         <p className="font-mono text-xs text-slate-500">No payment requests yet.</p>
       ) : (
         <div className="space-y-2">
-          {rows.map((r) => (
-            <div key={r.id} className={`flex flex-wrap items-center gap-3 border-2 p-3 ${r.status === 'pending' ? 'border-amber-400/40 bg-amber-400/5' : 'border-space-600 bg-space-800/40'}`}>
+          {rows.map((r) => {
+            const marked = sel.has(r.id);
+            return (
+            <div key={r.id} className={`flex flex-wrap items-center gap-3 border-2 p-3 ${marked ? 'border-neon/70 bg-neon/5' : r.status === 'pending' ? 'border-amber-400/40 bg-amber-400/5' : 'border-space-600 bg-space-800/40'}`}>
+              <button onClick={() => toggleMark(r.id)} title={marked ? 'Unmark' : 'Mark for removal'} className="flex-none p-0.5">
+                {marked ? <CheckSquare className="h-4 w-4 text-neon" /> : <Square className="h-4 w-4 text-slate-500 hover:text-slate-300" />}
+              </button>
               <span className={`inline-flex items-center gap-1 border px-2 py-0.5 font-mono text-[9px] uppercase ${statusChip(r.status)}`}>
                 {r.status === 'approved' ? <BadgeCheck className="h-3 w-3" /> : r.status === 'rejected' ? <XCircle className="h-3 w-3" /> : <Clock className="h-3 w-3" />}
                 {r.status}
@@ -311,7 +381,8 @@ export function PaymentsTab({ token, onSessionExpired }) {
                 </div>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -329,10 +400,15 @@ export function PaymentsTab({ token, onSessionExpired }) {
 export function DevicesTab({ token, onSessionExpired }) {
   const [rows, setRows] = useState(null);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [detail, setDetail] = useState(null);
   const [detailBusy, setDetailBusy] = useState(false);
   const [parentFilter, setParentFilter] = useState('all');
   const [query, setQuery] = useState('');
+  // mark & remove: a Set of marked device ids (online AND offline both allowed)
+  const [sel, setSel] = useState(() => new Set());
+  const [deleting, setDeleting] = useState(false);
+  const dialog = useDialogs();
   const listRef = useRef(null);
 
   const load = async () => {
@@ -340,6 +416,7 @@ export function DevicesTab({ token, onSessionExpired }) {
     try {
       const d = await adminApi(token, '/api/admin/devices');
       setRows(d.devices || []);
+      setSel(new Set());
     } catch (e) {
       if (e.message === 'ADMIN_SESSION_EXPIRED') onSessionExpired();
       else setError(e.message);
@@ -378,6 +455,45 @@ export function DevicesTab({ token, onSessionExpired }) {
     } catch (e) { setError(e.message); } finally { setDetailBusy(false); }
   }
 
+  // ---- mark & delete ----
+  const toggleMark = (id) => {
+    setSel((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const allMarked = filtered.length > 0 && filtered.every((d) => sel.has(d.id));
+  const markAll = () => {
+    setSel(allMarked ? new Set() : new Set(filtered.map((d) => d.id)));
+  };
+
+  async function deleteSelected() {
+    if (sel.size === 0) return;
+    const ok = await dialog.confirm({
+      title: `Delete ${sel.size} marked device${sel.size > 1 ? 's' : ''}?`,
+      body: 'Devices are removed together with their sessions, policies, usage, locations, events, media and hardware reports.\nThis cannot be undone — even if the device is ONLINE.',
+      confirmText: 'Delete devices',
+      tone: 'danger',
+    });
+    if (!ok) return;
+    setDeleting(true); setError('');
+    try {
+      const d = await adminApi(token, '/api/admin/devices/delete', {
+        method: 'POST',
+        body: JSON.stringify({ ids: [...sel] }),
+      });
+      setNotice(`${d.deleted} device(s) removed from the platform.`);
+      await load();
+    } catch (e) {
+      if (e.message === 'ADMIN_SESSION_EXPIRED') onSessionExpired();
+      else setError(e.message);
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   return (
     <div>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -406,13 +522,38 @@ export function DevicesTab({ token, onSessionExpired }) {
       </div>
 
       {error && <p className="mb-3 border-2 border-hazard/60 bg-hazard/10 px-3 py-2 font-mono text-xs text-red-300">{error}</p>}
+      {notice && <p className="mb-3 border-2 border-emerald-500/50 bg-emerald-500/10 px-3 py-2 font-mono text-xs text-emerald-300">{notice}</p>}
+
+      {/* mark & remove action bar */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <button onClick={markAll} disabled={!rows || filtered.length === 0}
+          className="flex items-center gap-1.5 border-2 border-space-600 px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-wider text-slate-300 hover:border-neon hover:text-neon disabled:opacity-40">
+          {allMarked ? <CheckSquare className="h-3.5 w-3.5" /> : <Square className="h-3.5 w-3.5" />}
+          {allMarked ? 'Unmark all' : 'Mark all shown'}
+        </button>
+        <span className="font-mono text-[10px] uppercase tracking-wider text-slate-500">{sel.size} marked</span>
+        {sel.size > 0 && (
+          <button onClick={deleteSelected} disabled={deleting}
+            className="ml-auto flex items-center gap-1.5 border-2 border-hazard/60 bg-hazard/10 px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-red-300 hover:bg-hazard/20 disabled:opacity-40">
+            {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+            Delete marked ({sel.size})
+          </button>
+        )}
+      </div>
+
       {!rows ? <p className="font-mono text-xs text-slate-500">Loading…</p> : (
         <div ref={listRef} className="space-y-2">
           {filtered.length === 0 && (
             <p className="font-mono text-xs text-slate-500">No devices match this filter.</p>
           )}
-          {filtered.map((d) => (
-            <div key={d.id} data-dev-row className="flex flex-wrap items-center gap-3 border-2 border-space-600 bg-space-800/40 p-3">
+          {filtered.map((d) => {
+            const marked = sel.has(d.id);
+            return (
+            <div key={d.id} data-dev-row className={`flex flex-wrap items-center gap-3 border-2 p-3 ${marked ? 'border-neon bg-neon/5' : 'border-space-600 bg-space-800/40'}`}>
+              <button onClick={() => toggleMark(d.id)} title={marked ? 'Unmark' : 'Mark for deletion'}
+                className="flex-none p-0.5">
+                {marked ? <CheckSquare className="h-4 w-4 text-neon" /> : <Square className="h-4 w-4 text-slate-500 hover:text-slate-300" />}
+              </button>
               <Smartphone className={`h-5 w-5 flex-none ${d.status === 'online' ? 'text-emerald-300' : 'text-slate-500'}`} />
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2 text-xs text-white">
@@ -448,7 +589,8 @@ export function DevicesTab({ token, onSessionExpired }) {
                 <Cpu className="h-3.5 w-3.5" /> hardware
               </button>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

@@ -129,6 +129,24 @@ export async function requireAdmin(request, env) {
 
 // ---------- handlers ----------
 
+/**
+ * Persist an admin console action into admin_logs (0009). Best-effort:
+ * logging must NEVER break the mutation it accompanies. Captures IP,
+ * user-agent and — when the client supplies one — a browser fingerprint,
+ * so the Logs tab can show exactly who did what, from where.
+ */
+export async function logAdminEvent(env, request, event, detail, fingerprint) {
+  try {
+    await sbInsert(env, 'admin_logs', {
+      event: String(event || 'unknown').slice(0, 60),
+      detail: detail ? String(detail).slice(0, 500) : null,
+      ip: clientIp(request) || null,
+      user_agent: (request?.headers?.get?.('user-agent') || '').slice(0, 400) || null,
+      fingerprint: fingerprint ? String(fingerprint).slice(0, 120) : null,
+    }, false);
+  } catch { /* never break the admin action */ }
+}
+
 /** Public booleans for the login page — no secret material, ever. */
 export async function handleAdminConfig(env) {
   return json({
@@ -149,6 +167,7 @@ export async function handleAdminLogin(request, env) {
   const body = await readJson(request);
   const password = str(body.password, 200);
   const email = (str(body.email, 200) || '').trim().toLowerCase();
+  const fingerprint = str(body.fingerprint, 120) || null; // set by the console login page
   if (!password) throw new HttpError(400, 'bad_request', 'Password required');
 
   const deny = () => new HttpError(403, 'admin_auth', 'Wrong admin email or password');
@@ -159,6 +178,7 @@ export async function handleAdminLogin(request, env) {
     const wantEmail = await sha256hex(env.ADMIN_EMAIL.trim().toLowerCase());
     if (!email || (await sha256hex(email)) !== wantEmail) {
       await new Promise((r) => setTimeout(r, 250));
+      await logAdminEvent(env, request, 'admin_login_fail', 'wrong e-mail', fingerprint);
       throw deny();
     }
   }
@@ -169,6 +189,7 @@ export async function handleAdminLogin(request, env) {
   if (given !== want) {
     // tiny, constant-ish delay to blunt online guessing
     await new Promise((r) => setTimeout(r, 250));
+    await logAdminEvent(env, request, 'admin_login_fail', 'wrong password', fingerprint);
     throw deny();
   }
 
@@ -181,11 +202,13 @@ export async function handleAdminLogin(request, env) {
     const nonce = crypto.randomUUID();
     const payload = b64url(JSON.stringify({ exp, n: nonce }));
     const sig = await mfaHmacHex(env, payload);
+    await logAdminEvent(env, request, 'admin_login_step2', 'password ok — 2FA required', fingerprint);
     return json({ ok: true, mfaRequired: true, mfaToken: `${payload}.${sig}`, expiresInMs: MFA_TTL_MS });
   }
 
   const exp = String(Date.now() + TOKEN_TTL_MS);
   const token = `${exp}.${await hmacHex(env, exp)}`;
+  await logAdminEvent(env, request, 'admin_login', 'console unlocked', fingerprint);
   return json({ ok: true, token, expiresInMs: TOKEN_TTL_MS });
 }
 
@@ -202,6 +225,7 @@ export async function handleAdminMfa(request, env) {
   const body = await readJson(request);
   const mfaToken = str(body.mfaToken, 600);
   const code = str(body.code, 10);
+  const fingerprint = str(body.fingerprint, 120) || null;
   if (!mfaToken || !mfaToken.includes('.')) {
     throw new HttpError(400, 'mfa_ticket', 'Verification ticket missing — start again from the password step');
   }
@@ -238,12 +262,14 @@ export async function handleAdminMfa(request, env) {
   const ok = await totpVerify(env.ADMIN_TOTP_SECRET, code);
   if (!ok) {
     await new Promise((r) => setTimeout(r, 250));
+    await logAdminEvent(env, request, 'admin_mfa_fail', 'wrong 2FA code', fingerprint);
     throw new HttpError(403, 'admin_auth', 'Wrong verification code — check your authenticator app');
   }
   usedMfaNonces.set(parsed.n, parsed.exp);
 
   const exp = String(Date.now() + TOKEN_TTL_MS);
   const token = `${exp}.${await hmacHex(env, exp)}`;
+  await logAdminEvent(env, request, 'admin_login', 'console unlocked (2FA)', fingerprint);
   return json({ ok: true, token, expiresInMs: TOKEN_TTL_MS });
 }
 
@@ -367,6 +393,7 @@ export async function handleAdminRemoveUser(request, env) {
   }
   // best-effort cleanup of non-cascaded logs/bans
   await sbRest(env, 'admin_bans?user_id=eq.' + userId, { method: 'DELETE' }).catch(() => {});
+  await logAdminEvent(env, request, 'user_remove', `${userId} deleted (account + devices + data)`);
   return json({ ok: true, removed: userId });
 }
 
@@ -392,6 +419,7 @@ export async function handleAdminBan(request, env) {
   // Revoke live sessions so a banned user cannot keep an open dashboard.
   // Endpoint availability differs across GoTrue versions — try both, ignore
   // failures: the Worker-level ban check enforces the block regardless.
+  await logAdminEvent(env, request, 'user_ban', `${email || userId} banned — ${reason}`);
   await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users/${userId}/logout`, {
     method: 'POST',
     headers: {
@@ -416,6 +444,7 @@ export async function handleAdminUnban(request, env) {
     throw new HttpError(400, 'bad_request', 'userId (uuid) required');
   }
   await sbUpdate(env, 'admin_bans', `user_id=eq.${userId}`, { active: false });
+  await logAdminEvent(env, request, 'user_unban', `${userId} unbanned`);
   return json({ ok: true, unbanned: userId });
 }
 
@@ -442,14 +471,17 @@ export async function handleAdminUserTier(request, env) {
 
   if (tier === 'free') {
     // Revoke: keep the row but flip it to a dead free plan (same as expiry).
+    // NOTE status must satisfy the subscriptions_status_check constraint —
+    // 'canceled' (the old code wrote 'expired', which PostgREST rejected with
+    // a 400 and made plan downgrades impossible; widened in migration 0009).
     const existing = await sbRest(env, `subscriptions?parent_id=eq.${userId}&select=parent_id`).catch(() => []);
     if (existing.length > 0) {
       await sbUpdate(env, 'subscriptions', `parent_id=eq.${userId}`, {
-        plan: 'free', tier: null, status: 'expired', current_period_end: nowIso, source: 'admin_revoke',
+        plan: 'free', tier: null, status: 'canceled', current_period_end: nowIso, source: 'admin_revoke',
       });
     } else {
       await sbInsert(env, 'subscriptions', {
-        parent_id: userId, plan: 'free', tier: null, status: 'expired',
+        parent_id: userId, plan: 'free', tier: null, status: 'canceled',
         current_period_end: nowIso, source: 'admin_revoke',
       }, false);
     }
@@ -470,6 +502,7 @@ export async function handleAdminUserTier(request, env) {
     }
   }
   invalidateSubscriptionCache(userId);
+  await logAdminEvent(env, request, 'user_tier', `plan for ${email || userId} → ${tier}`);
 
   // Best-effort Telegram heads-up to the parent (if they configured a bot).
   const msg = tier === 'free'
@@ -565,6 +598,7 @@ export async function handleAdminAnnouncements(request, env) {
     created_by: 'admin',
     expires_at: expiresAt ? new Date(expiresAt).toISOString() : null,
   });
+  await logAdminEvent(env, request, 'announcement_create', `${type} published${title ? `: ${title}` : ''}`);
   return json({ ok: true, announcement: row[0] || null });
 }
 
@@ -574,6 +608,7 @@ export async function handleAdminAnnouncementToggle(request, env) {
   const active = Boolean(body.active);
   if (!id || !/^[0-9a-fA-F-]{36}$/.test(id)) throw new HttpError(400, 'bad_request', 'id (uuid) required');
   await sbUpdate(env, 'announcements', `id=eq.${id}`, { active });
+  await logAdminEvent(env, request, 'announcement_toggle', `${id} → ${active ? 'active' : 'inactive'}`);
   return json({ ok: true, id, active });
 }
 
@@ -582,6 +617,7 @@ export async function handleAdminAnnouncementDelete(request, env) {
   const id = str(body.id, 64);
   if (!id || !/^[0-9a-fA-F-]{36}$/.test(id)) throw new HttpError(400, 'bad_request', 'id (uuid) required');
   await sbRest(env, `announcements?id=eq.${id}`, { method: 'DELETE' });
+  await logAdminEvent(env, request, 'announcement_delete', `${id} deleted`);
   return json({ ok: true, deleted: id });
 }
 
@@ -662,6 +698,7 @@ export async function handleAdminPaymentDecision(request, env) {
     ? `✅ <b>Payment approved</b>\n\nPlan: <b>${pr.plan}</b>${granted?.until ? `\nActive until: ${new Date(granted.until).toDateString()}` : '\nAccess: lifetime'}\nAmount: ${pr.amount_bdt} BDT (${pr.method})\n\nEnjoy all Pro features!`
     : `❌ <b>Payment not approved</b>\n\nPlan: ${pr.plan} · ${pr.amount_bdt} BDT (${pr.method})\n${note ? `Reason: ${note}\n` : ''}\nContact support if you think this is a mistake.`;
   sendTelegramTo(env, pr.parent_id, msg).catch(() => {});
+  await logAdminEvent(env, request, `payment_${decision}`, `${pr.email} · ${pr.plan} · ${pr.amount_bdt} BDT${note ? ` — ${note}` : ''}`);
 
   return json({ ok: true, requestId, decision, granted });
 }
@@ -782,4 +819,86 @@ export async function handleAdminSecurity(env) {
       },
     },
   });
+}
+
+// ---------- admin + parent access logs (Logs tab, migration 0009) ----------
+
+/**
+ * GET /api/admin/logs?limit=400
+ *   parents — auth_login_logs rows (every parent login / registration with
+ *             IP, user-agent, browser fingerprint, timestamp)
+ *   admin   — admin_logs rows (every console action: logins, plan changes,
+ *             bans, broadcasts, payment decisions, deletions)
+ * Both are plain rows — the console renders them as tables, never raw JSON.
+ */
+export async function handleAdminLogs(request, env) {
+  const url = new URL(request.url);
+  const rawLimit = Number(url.searchParams.get('limit')) || 400;
+  const limit = Math.min(1000, Math.max(1, Math.floor(rawLimit)));
+  const [parents, admin] = await Promise.all([
+    sbRest(env, `auth_login_logs?select=user_id,email,event,ip,user_agent,fingerprint,created_at&order=created_at.desc&limit=${limit}`).catch(() => []),
+    sbRest(env, `admin_logs?select=event,detail,ip,user_agent,fingerprint,created_at&order=created_at.desc&limit=${limit}`).catch(() => []),
+  ]);
+  return json({ ok: true, parents, admin });
+}
+
+/**
+ * POST /api/admin/devices/delete  {ids: uuid[]}
+ * Hard-removes the marked devices (online OR offline — status is ignored on
+ * purpose). FKs cascade: sessions, policies, usage, locations, events, media,
+ * hardware reports are all cleaned up by the database itself.
+ */
+export async function handleAdminDevicesDelete(request, env) {
+  const body = await readJson(request);
+  const ids = Array.isArray(body.ids)
+    ? body.ids.map((x) => str(x, 64)).filter((x) => /^[0-9a-fA-F-]{36}$/.test(x))
+    : [];
+  if (ids.length === 0) throw new HttpError(400, 'bad_request', 'ids (uuid[]) required');
+  if (ids.length > 200) throw new HttpError(400, 'bad_request', 'Too many ids — delete in batches of 200');
+  const deleted = await sbRest(env, `devices?id=in.(${ids.join(',')})&select=id,name`, {
+    method: 'DELETE',
+    prefer: 'return=representation',
+  });
+  const n = Array.isArray(deleted) ? deleted.length : 0;
+  await logAdminEvent(env, request, 'devices_delete', `${n} device(s) hard-removed (${ids.length} marked)`);
+  return json({ ok: true, deleted: n });
+}
+
+/**
+ * POST /api/admin/payments/delete  {ids: uuid[]}
+ * Mark-and-remove for the Payments tab: deletes the marked request rows
+ * (typically rejected ones) and best-effort purges their private-bucket
+ * screenshots, so reviewed requests leave the console for good.
+ */
+export async function handleAdminPaymentsDelete(request, env) {
+  const body = await readJson(request);
+  const ids = Array.isArray(body.ids)
+    ? body.ids.map((x) => str(x, 64)).filter((x) => /^[0-9a-fA-F-]{36}$/.test(x))
+    : [];
+  if (ids.length === 0) throw new HttpError(400, 'bad_request', 'ids (uuid[]) required');
+  if (ids.length > 200) throw new HttpError(400, 'bad_request', 'Too many ids — delete in batches of 200');
+  const inList = `in.(${ids.join(',')})`;
+  const rows = await sbRest(env, `payment_requests?id=${inList}&select=id,screenshot_path,email,plan`).catch(() => []);
+  const deleted = await sbRest(env, `payment_requests?id=${inList}&select=id`, {
+    method: 'DELETE',
+    prefer: 'return=representation',
+  });
+  const n = Array.isArray(deleted) ? deleted.length : 0;
+  // best-effort screenshot purge from the private 'payments' bucket
+  let shots = 0;
+  for (const r of rows) {
+    if (!r.screenshot_path) continue;
+    try {
+      const res = await fetch(`${env.SUPABASE_URL}/storage/v1/object/payments/${r.screenshot_path}`, {
+        method: 'DELETE',
+        headers: {
+          apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+          Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+        },
+      });
+      if (res.ok) shots++;
+    } catch { /* best effort */ }
+  }
+  await logAdminEvent(env, request, 'payments_delete', `${n} payment request(s) removed, ${shots} screenshot(s) purged`);
+  return json({ ok: true, deleted: n, screenshots: shots });
 }

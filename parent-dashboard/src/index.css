@@ -180,3 +180,7 @@ body {
   .chip-crit { @apply chip border-hazard text-hazard bg-hazard/10; }
   .chip-ok { @apply chip border-neon text-neon bg-neon/10; }
 }
+
+/* Plyr runs as the INVISIBLE engine — our brutalist bar drives it via API.
+   For audio the engine's wrapper would render an empty strip, so hide it. */
+.player-audio .plyr { display: none !important; }

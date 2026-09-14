@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   X, Folder, FolderPlus, File as FileIcon, FilePlus, Upload, Download, RefreshCw,
-  ChevronUp, Loader2, Play, Pause, Volume2, VolumeX, Maximize, PictureInPicture2,
+  ChevronUp, Loader2,
   Pencil, Trash2, FileText, Image as ImageIcon, Film, Music, FileArchive, CheckSquare, Square,
   ZoomIn, ZoomOut, Edit3, Save, ArrowLeft,
 } from 'lucide-react';
 import { command } from '../../services/ws.js';
-import { transferFile, downloadBlob, makeZip, fmtBytes, uploadToDevice, b64ToBytes } from '../../lib/transfer.js';
+import { transferFile, downloadBlob, makeZip, fmtBytes, uploadToDevice, b64ToBytes, retypedBlob } from '../../lib/transfer.js';
+import { MediaPlayer } from './PlayerEngine.jsx';
 
 /**
  * FULL on-device file manager — large modal (full-screen on phones), powered by
@@ -131,107 +132,7 @@ function CodeView({ code, name }) {
   );
 }
 
-// ─── custom media player (video / audio) ────────────────────────────────────
-
-function MediaPlayer({ src, kind, poster }) {
-  const ref = useRef(null);
-  const wrapRef = useRef(null);
-  const [playing, setPlaying] = useState(false);
-  const [t, setT] = useState(0);
-  const [dur, setDur] = useState(0);
-  const [muted, setMuted] = useState(false);
-  const [rate, setRate] = useState(1);
-
-  useEffect(() => {
-    const v = ref.current;
-    if (!v) return undefined;
-    const onTime = () => setT(v.currentTime);
-    const onMeta = () => setDur(v.duration || 0);
-    const onEnd = () => setPlaying(false);
-    v.addEventListener('timeupdate', onTime);
-    v.addEventListener('loadedmetadata', onMeta);
-    v.addEventListener('ended', onEnd);
-    return () => {
-      v.removeEventListener('timeupdate', onTime);
-      v.removeEventListener('loadedmetadata', onMeta);
-      v.removeEventListener('ended', onEnd);
-    };
-  }, [src]);
-
-  const fmt = (s) => {
-    if (!Number.isFinite(s)) return '0:00';
-    const m = Math.floor(s / 60);
-    const sec = Math.floor(s % 60);
-    return `${m}:${String(sec).padStart(2, '0')}`;
-  };
-
-  const toggle = () => {
-    const v = ref.current;
-    if (!v) return;
-    if (v.paused) { v.play().catch(() => {}); setPlaying(true); }
-    else { v.pause(); setPlaying(false); }
-  };
-
-  const cycleRate = () => {
-    const next = rate >= 2 ? 0.75 : rate === 0.75 ? 1 : rate + 0.25;
-    setRate(next);
-    if (ref.current) ref.current.playbackRate = next;
-  };
-
-  return (
-    <div ref={wrapRef} className="flex h-full w-full flex-col items-center justify-center bg-black p-2">
-      {kind === 'video' ? (
-        <video
-          ref={ref}
-          src={src}
-          poster={poster}
-          playsInline
-          className="max-h-[52vh] w-auto max-w-full"
-          onClick={toggle}
-        />
-      ) : (
-        <div className="flex w-full max-w-md flex-col items-center gap-4 py-10">
-          <button onClick={toggle} className="flex h-20 w-20 items-center justify-center border-2 border-neon bg-neon/10 text-neon shadow-brutal-neon">
-            {playing ? <Pause className="h-8 w-8" /> : <Play className="h-8 w-8" />}
-          </button>
-          <audio ref={ref} src={src} onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} className="hidden" />
-        </div>
-      )}
-      {/* brutalist control bar */}
-      <div className="mt-2 flex w-full max-w-2xl flex-wrap items-center gap-2 border-2 border-space-600 bg-space-800/90 px-3 py-2">
-        <button onClick={toggle} className="border-2 border-space-600 p-1.5 text-slate-200 hover:border-neon hover:text-neon" title="Play / pause">
-          {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-        </button>
-        <span className="font-mono text-[10px] text-slate-400">{fmt(t)}</span>
-        <input
-          type="range" min={0} max={dur || 0} step={0.1} value={Math.min(t, dur || 0)}
-          onChange={(e) => { const v = ref.current; if (v) { v.currentTime = Number(e.target.value); setT(Number(e.target.value)); } }}
-          className="h-1.5 min-w-[120px] flex-1 accent-neon"
-        />
-        <span className="font-mono text-[10px] text-slate-400">{fmt(dur)}</span>
-        <button onClick={() => { const v = ref.current; if (v) { v.muted = !v.muted; setMuted(v.muted); } }}
-          className="border-2 border-space-600 p-1.5 text-slate-200 hover:border-neon hover:text-neon" title="Mute">
-          {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
-        </button>
-        <button onClick={cycleRate} className="border-2 border-space-600 px-1.5 py-1 font-mono text-[10px] font-bold text-slate-200 hover:border-neon hover:text-neon" title="Playback speed">
-          {rate}x
-        </button>
-        {kind === 'video' && (
-          <>
-            <button onClick={() => wrapRef.current?.requestFullscreen?.()} className="border-2 border-space-600 p-1.5 text-slate-200 hover:border-neon hover:text-neon" title="Fullscreen">
-              <Maximize className="h-4 w-4" />
-            </button>
-            <button
-              onClick={() => { const v = ref.current; if (v?.requestPictureInPicture) v.requestPictureInPicture().catch(() => {}); }}
-              className="hidden border-2 border-space-600 p-1.5 text-slate-200 hover:border-neon hover:text-neon lg:block" title="Picture in picture">
-              <PictureInPicture2 className="h-4 w-4" />
-            </button>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
+// ─── media player: see PlayerEngine.jsx (Plyr core + brutalist controls) ────
 
 // ─── image lightbox with zoom + pan ─────────────────────────────────────────
 
@@ -494,7 +395,7 @@ export default function FileManagerModal({ deviceId, conn, onClose }) {
     setMsg('');
     try {
       const res = await xfer.run(fileParams(f), (out) => {
-        setFullUrl((u) => { if (u) URL.revokeObjectURL(u); return URL.createObjectURL(out.blob); });
+        setFullUrl((u) => { if (u) URL.revokeObjectURL(u); return URL.createObjectURL(retypedBlob(out.blob, f.name)); });
         setView((v) => (v && v.phase === 'loading' ? { phase: 'ready', kind, name: f.name, size: out.totalSize } : v));
       });
       setView({

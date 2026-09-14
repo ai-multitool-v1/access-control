@@ -9,6 +9,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Megaphone, X, Bell, Image as ImageIcon } from 'lucide-react';
 import { api } from '../services/api.js';
 import { modalIn, toastIn } from '../lib/anim.js';
+import { playToastTone } from '../lib/feedback.js';
 
 const DISMISS_KEY = 'ac_dismissed_announcements';
 const POLL_MS = 10 * 60 * 1000;
@@ -56,7 +57,13 @@ export default function AnnouncementHost() {
     markDismissed(a.id);
     setItems((xs) => xs.filter((x) => x.id !== a.id));
     if (kind === 'banner') setBanners((xs) => xs.filter((x) => x.id !== a.id));
-    if (kind === 'popup') setActivePopup(null);
+    if (kind === 'popup') {
+      // MUST also drop it from `popups` — otherwise the "show the newest
+      // unseen popup" effect instantly re-opens the modal the parent just
+      // dismissed (Got it / X never appeared to work).
+      setPopups((xs) => xs.filter((x) => x.id !== a.id));
+      setActivePopup(null);
+    }
     if (kind === 'toast') setToasts((xs) => xs.filter((x) => x.id !== a.id));
   };
 
@@ -99,6 +106,7 @@ function AnnouncementToasts({ toasts, dismiss, openLink }) {
       seen.current.add(a.id);
       const el = document.getElementById(`ann-toast-${a.id}`);
       if (el) toastIn(el, true);
+      playToastTone(); // Tone.js pop — only on first appearance of each toast
     }
   }, [toasts]);
   if (toasts.length === 0) return null;

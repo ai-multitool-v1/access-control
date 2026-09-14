@@ -26,6 +26,7 @@ import {
   handleAdminRemoveUser, handleAdminBan, handleAdminUnban, handleAdminSecurity, requireAdmin,
   handleAdminUserTier, handleAdminAnnouncements, handleAdminAnnouncementToggle, handleAdminAnnouncementDelete,
   handleAdminPayments, handleAdminPaymentImage, handleAdminPaymentDecision, handleAdminDevices,
+  handleAdminLogs, handleAdminDevicesDelete, handleAdminPaymentsDelete,
 } from '../api/admin.js';
 import { handlePaymentSubmit, handleMyPayments, handleAnnouncements } from '../api/payments.js';
 import { requirePremium } from '../lib/subscription.js';
@@ -128,6 +129,18 @@ export async function handleApi(request, env) {
     // ---- all connected child devices + hardware ----
     if (p === '/api/admin/devices' && method === 'GET') {
       return handleAdminDevices(request, env);
+    }
+    // ---- mark & remove devices (online OR offline) ----
+    if (p === '/api/admin/devices/delete' && method === 'POST') {
+      return handleAdminDevicesDelete(request, env);
+    }
+    // ---- mark & remove payment requests (typically rejected ones) ----
+    if (p === '/api/admin/payments/delete' && method === 'POST') {
+      return handleAdminPaymentsDelete(request, env);
+    }
+    // ---- access logs: parents (auth_login_logs) + admin (admin_logs) ----
+    if (p === '/api/admin/logs' && method === 'GET') {
+      return handleAdminLogs(request, env);
     }
     throw new HttpError(404, 'not_found', 'Unknown admin endpoint');
   }

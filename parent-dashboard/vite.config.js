@@ -17,6 +17,10 @@ export default defineConfig({
         manualChunks: {
           vendor: ['react', 'react-dom', 'react-router-dom'],
           supabase: ['@supabase/supabase-js'],
+          // heavier libraries loaded once and cached — Plyr (media player core)
+          // and Tone.js (notification/toast sounds) live in their own chunk so
+          // the main bundle stays lean
+          media: ['plyr', 'tone'],
         },
       },
     },

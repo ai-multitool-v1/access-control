@@ -107,6 +107,39 @@ export async function transferFile(params, { onProgress, maxBytes = MAX_TRANSFER
   };
 }
 
+// ─── MIME correction (fixes "video won't load" in the player) ───────────────
+
+const MIME_BY_EXT = {
+  mp4: 'video/mp4', m4v: 'video/mp4', mov: 'video/mp4', webm: 'video/webm',
+  mkv: 'video/x-matroska', '3gp': 'video/3gpp', '3gpp': 'video/3gpp', '3g2': 'video/3gpp2',
+  ogv: 'video/ogg', avi: 'video/x-msvideo', wmv: 'video/x-msvideo',
+  flv: 'video/x-flv', mpg: 'video/mpeg', mpeg: 'video/mpeg', ts: 'video/mp2t',
+  mp3: 'audio/mpeg', m4a: 'audio/mp4', aac: 'audio/mp4', ogg: 'audio/ogg',
+  oga: 'audio/ogg', opus: 'audio/ogg', wav: 'audio/wav', flac: 'audio/flac',
+  amr: 'audio/amr', mid: 'audio/midi', midi: 'audio/midi',
+};
+
+/** Best-effort container MIME from a file name (falls back to reported type). */
+export function mimeForName(name, fallback) {
+  const ext = String(name || '').split('.').pop().toLowerCase();
+  return MIME_BY_EXT[ext] || fallback || 'application/octet-stream';
+}
+
+/**
+ * Re-wrap a transferred Blob with the correct container MIME — the child
+ * device often reports 'application/octet-stream' or an exotic type, which
+ * makes even perfectly decodable files refuse to load in a <video>/<audio>.
+ */
+export function retypedBlob(blob, name) {
+  const type = mimeForName(name, blob.type);
+  if (!type || type === blob.type) return blob;
+  try {
+    return new Blob([blob], { type });
+  } catch {
+    return blob;
+  }
+}
+
 export function downloadBlob(blob, name) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

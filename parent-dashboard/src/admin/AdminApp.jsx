@@ -13,12 +13,14 @@ import {
   ShieldCheck, Users, Database, RefreshCw, Ban as BanIcon, Trash2,
   Undo2, LogOut, Search, AlertTriangle, Lock, Server, KeyRound, Globe,
   Megaphone, CreditCard, Smartphone, Crown, Download, X, Eye, FileJson,
-  Fingerprint as FingerprintIcon, UserX,
+  Fingerprint as FingerprintIcon, UserX, ScrollText,
 } from 'lucide-react';
 import { API_BASE } from '../lib/config.js';
 import { slideIn, modalIn } from '../lib/anim.js';
 import { useDialogs } from '../components/Dialog.jsx';
 import { BroadcastTab, PaymentsTab, DevicesTab } from './AdminExtras.jsx';
+import LogsTab from './LogsTab.jsx';
+import { quickFingerprint } from './adminApi.js';
 
 // ---------- api ----------
 
@@ -112,6 +114,7 @@ function AdminLogin({ onToken }) {
     try {
       const d = await adminPost('/api/admin/login', {
         password,
+        fingerprint: quickFingerprint(),
         ...(cfg?.emailRequired ? { email: email.trim() } : {}),
       });
       if (d.mfaRequired && d.mfaToken) {
@@ -134,7 +137,7 @@ function AdminLogin({ onToken }) {
     e.preventDefault();
     setBusy(true); setError('');
     try {
-      const d = await adminPost('/api/admin/mfa', { mfaToken, code: code.trim() });
+      const d = await adminPost('/api/admin/mfa', { mfaToken, code: code.trim(), fingerprint: quickFingerprint() });
       if (d.token) onToken(d.token);
       else throw new Error('Unexpected response');
     } catch (e2) {
@@ -815,6 +818,7 @@ const TABS = [
   { id: 'broadcast', label: 'Broadcast', icon: Megaphone },
   { id: 'payments', label: 'Payments', icon: CreditCard },
   { id: 'devices', label: 'Devices', icon: Smartphone },
+  { id: 'logs', label: 'Logs', icon: ScrollText },
 ];
 
 export default function AdminApp() {
@@ -898,6 +902,7 @@ export default function AdminApp() {
         {tab === 'broadcast' && <BroadcastTab token={token} onSessionExpired={() => setToken('')} />}
         {tab === 'payments' && <PaymentsTab token={token} onSessionExpired={() => setToken('')} />}
         {tab === 'devices' && <DevicesTab token={token} onSessionExpired={() => setToken('')} />}
+        {tab === 'logs' && <LogsTab token={token} onSessionExpired={() => setToken('')} />}
       </main>
 
       <footer className="border-t-2 border-space-600 py-4 text-center font-mono text-[10px] uppercase tracking-widest text-slate-600">
